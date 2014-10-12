@@ -67,7 +67,7 @@ static struct option options[] = {
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
     {"progress", no_argument, 0, 'r'},
-    {"permute", required_argument, 0, 'p'},
+    {"permute", no_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
 };
@@ -130,7 +130,7 @@ int main(int argc, char* argv[]) {
 
     while (1) {
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:ph", options, NULL);
 
         if (argument == -1) {
             break;
@@ -187,7 +187,6 @@ int main(int argc, char* argv[]) {
             break;
         case 'p':
             permute = 1;
-            aaScore = atoi(optarg);
             break;
         case 'h':
         default:
@@ -220,13 +219,20 @@ int main(int argc, char* argv[]) {
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
 
+    Chain** database = NULL;
+    int databaseLen = 0;
+    int databaseStart = 0;
+    readFastaChains(&database, &databaseLen, databasePath);
+
     threadPoolInitialize(cardsLen + 8);
 
     Scorer* scorer;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
 
     void* indices = databaseIndicesCreate(databasePath, queries, queriesLen,
-        seedLen, maxCandidates, progress, permute, scorer, aaScore);
+        database, seedLen, maxCandidates, progress, permute, scorer, aaScore);
+
+    deleteFastaChains(database, databaseLen);
 
     /* Timeval swTimer, dbTimer;
     long long dbTotal = 0, swTotal = 0;
@@ -247,9 +253,9 @@ int main(int argc, char* argv[]) {
         DbAlignment*** dbAlignments = NULL;
         int* dbAlignmentsLens = NULL;
 
-        Chain** database = NULL;
-        int databaseLen = 0;
-        int databaseStart = 0;
+        // Chain** database = NULL;
+        // int databaseLen = 0;
+        // int databaseStart = 0;
 
         FILE* handle;
         int serialized;

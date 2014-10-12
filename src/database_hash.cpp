@@ -3,6 +3,8 @@
 #include <math.h>
 
 #include <vector>
+#include <tuple>
+#include <map>
 #include <fstream>
 #include <iostream>
 #include <utility>
@@ -19,6 +21,9 @@ using namespace std;
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #define SEED_IDX_LEN(n) ((n) == 3 ? 26426 : ((n) == 4 ? 845626 : 27060026))
+//#define SEED_IDX_LEN(n) ((n) == 3 ? 25369 : ((n) == 4 ? 811801 : 25977625))
+#define SEED_THRESHOLD(n) ((n) == 3 ? 11 : ((n) == 4 ? 13 : 15))
+#define A 40
 
 #define ASSERT(expr, fmt, ...)\
     do {\
@@ -29,32 +34,48 @@ using namespace std;
     } while (0)
 
 #define AA 23
+//#define AA 20
 #define BUFFER 1024
 
-typedef unsigned short uint16;
+// halignment = (query_start, query_end, target_start, target_end, halignment_score, control)
+// candidate = (halignment_score, target_index)
+// code = (code, sequence_start)
+// max = (max_halignment_score, max_index)
 
-typedef vector<vector<pair<int, double> > > Candidates;
+typedef unsigned short uint16;
+typedef tuple<uint16, uint16, uint16, uint16, int, char> HAlignment;
+typedef tuple<int, int> Candidate;
+typedef tuple<int, uint16> Code, Maximum;
+
 typedef vector<vector<int> > Data;
-typedef vector<vector<uint16> > Positions;
+typedef vector<vector<Code> > Codes;
+typedef vector<vector<Candidate> > Candidates;
+typedef vector<map<int, HAlignment> > HAlignments;
+typedef vector<Maximum> Maxima;
 
 typedef struct {
     int taskStart;
     int taskEnd;
+    int seedLen;
     int databaseStart;
+    int databaseLen;
     int maxCandidates;
     int extractIndices;
     Data* hash;
     Chain** queries;
-    Data* queryCodes;
+    Codes* queryCodes;
+    Chain** database;
     int* targetsLens;
-    Positions* positions;
+    Scorer* scorer;
+    HAlignments* alignments;
+    Maxima* alignMaxima;
     Candidates* candidates;
     Data* indices;
 } ThreadData;
 
 struct sort_by_score {
-    int operator()(const pair<int, double>& left, const pair<int, double>& right) {
-        return left.second > right.second;
+    int operator()(const Candidate& left, const Candidate& right) {
+        return get<0>(left) > get<0>(right);
     }
 };
 
@@ -100,16 +121,17 @@ static int seedCodesCreateRec(int** seedCodes, int codeIdx, vector<char>* seed,
 
 static void seedCodesDelete(int* seedCodes);
 
-static void aaPermutationsCreate(Data** permutations, Scorer* scorer, int aaScore);
+static void seedsCreate(Data** seeds, int* seedCodes, int seedCodesLen, int seedLen,
+    int permute, Scorer* scorer);
 
-static void aaPermutationsDelete(Data* permutations);
+static void seedsDelete(Data* seeds);
 
-static void queryCodesCreate(Data** queryCodes, Chain** queries, int queriesLen,
-    int seedLen, int permute, Scorer* scorer, int aaScore);
+static int permutation(int code1, int code2, int seedLen, int* encoder, Scorer* scorer);
 
-static void queryCodesDelete(Data* queryCodes);
+static void queryCodesCreate(Codes** queryCodes, Chain** queries, int queriesLen,
+    int seedLen, Data* seeds);
 
-static int lisScore(vector<uint16>* x);
+static void queryCodesDelete(Codes* queryCodes);
 
 static void hashCreate(Data** hash, int seedLen);
 
@@ -121,21 +143,36 @@ static void dataCreate(Data** data, int len);
 
 static void dataDelete(Data* data);
 
+static void codesCreate(Codes** codes, int len);
+
+static void codesDelete(Codes* codes);
+
 static void candidatesCreate(Candidates** candidates, int len);
 
 static void candidatesDelete(Candidates* candidates);
 
-static void positionsCreate(Positions** positions, int len);
+static void hAlignmentsCreate(HAlignments** alignments, int len);
 
-static void positionsDelete(Positions* positions);
+static void hAlignmentScore(HAlignment* alignment, Chain* query, Chain* target,
+    Scorer* scorer);
+
+static void hAlignmentExtendLeft(HAlignment* alignment, Chain* query, Chain* target,
+    uint16 extendLen, Scorer* scorer);
+
+static void hAlignmentExtendRight(HAlignment* alignment, Chain* query, Chain* target,
+    uint16 extendLen, Scorer* scorer);
+
+static void hAlignmentsDelete(HAlignments* alignments);
+
+static void maximaCreate(Maxima** maxima, int len);
+
+static void maximaDelete(Maxima* maxima);
 
 static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
     int* scoresLen, char* databasePath, int seedLen);
 
 static void readVolume(Data* hash, char* databasePath, int seedLen,
     int* seedCodes, int seedCodesLen, int volumeNum);
-
-static double scoreM(int lisLen, int n, int m);
 
 static void* scoreSequences(void* param);
 
@@ -147,7 +184,7 @@ static void* scoreSequences(void* param);
 // PUBLIC
 
 extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
-    int queriesLen, int seedLen, int maxCandidates, int progress,
+    int queriesLen, Chain** database, int seedLen, int maxCandidates, int progress,
     int permute, Scorer* scorer, int aaScore ) {
 
     int* volumes = NULL;
@@ -183,9 +220,13 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
     /* Timeval qcTimer;
     timerStart(&qcTimer); */
 
-    Data* queryCodes = NULL;
-    queryCodesCreate(&queryCodes, queries, queriesLen, seedLen,
-        permute, scorer, aaScore);
+    Data* seeds = NULL;
+    seedsCreate(&seeds, seedCodes, seedCodesLen, seedLen, permute, scorer);
+
+    Codes* queryCodes = NULL;
+    queryCodesCreate(&queryCodes, queries, queriesLen, seedLen, seeds);
+
+    seedsDelete(seeds);
 
     /* time_ = timerStop(&qcTimer);
     timerPrint("queryCodesCreate", time_); */
@@ -195,9 +236,14 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
 
     ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
 
-    Positions** threadPositions = new Positions*[threadLen];
+    HAlignments** alignments = new HAlignments*[threadLen];
     for (int i = 0; i < threadLen; ++i) {
-        positionsCreate(&threadPositions[i], scoresLen);
+        hAlignmentsCreate(&alignments[i], scoresLen);
+    }
+
+    Maxima** alignMaxima = new Maxima*[threadLen];
+    for (int i = 0; i < threadLen; ++i) {
+        maximaCreate(&alignMaxima[i], scoresLen);
     }
 
     /* Timeval heTimer;
@@ -224,15 +270,20 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
             threadData->taskEnd = (j + 1 == threadLen) ?
                 queriesLen : (j + 1) * threadTaskLen;
 
+            threadData->seedLen = seedLen;
             threadData->databaseStart = volumes[2 * i];
+            threadData->databaseLen = volumes[2 * i + 1];
             threadData->maxCandidates = maxCandidates;
             threadData->extractIndices = (i + 1 == volumesLen) ? true : false;
 
             threadData->hash = hash;
             threadData->queries = queries;
             threadData->queryCodes = queryCodes;
+            threadData->database = database;
             threadData->targetsLens = targetsLens;
-            threadData->positions = threadPositions[j];
+            threadData->scorer = scorer;
+            threadData->alignments = alignments[j];
+            threadData->alignMaxima = alignMaxima[j];
             threadData->candidates = candidates;
             threadData->indices = indices;
 
@@ -252,10 +303,16 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
     }
 
     for (int i = 0; i < threadLen; ++i) {
-        positionsDelete(threadPositions[i]);
+        maximaDelete(alignMaxima[i]);
     }
 
-    delete[] threadPositions;
+    delete[] alignMaxima;
+
+    for (int i = 0; i < threadLen; ++i) {
+        hAlignmentsDelete(alignments[i]);
+    }
+
+    delete[] alignments;
     delete[] threadTasks;
 
     candidatesDelete(candidates);
@@ -393,42 +450,63 @@ static void seedCodesDelete(int* seedCodes) {
     delete[] seedCodes;
 }
 
-static void aaPermutationsCreate(Data** permutations, Scorer* scorer, int aaScore) {
+static void seedsCreate(Data** seeds, int* seedCodes, int seedCodesLen, int seedLen,
+    int permute, Scorer* scorer) {
 
-    dataCreate(permutations, 26);
+    dataCreate(seeds, SEED_IDX_LEN(seedLen));
 
-    int score;
+    int threshold = SEED_THRESHOLD(seedLen);
 
+    int* encoder = new int[26];
     for (int i = 0; i < AA; ++i) {
-        for (int j = 0; j < AA; ++j) {
-            if (i == j) continue;
+        encoder[AMINO_ACIDS[i] - 'A'] = scorerEncode(AMINO_ACIDS[i]);
+    }
 
-            score = scorerScore(scorer, scorerEncode(AMINO_ACIDS[i]),
-                scorerEncode(AMINO_ACIDS[j]));
-
-            if (score > aaScore) {
-                (**permutations)[i].push_back(scorerEncode(AMINO_ACIDS[j]));
+    for (int i = 0; i < seedCodesLen; ++i) {
+        for (int j = i; j < seedCodesLen; ++j) {
+            if (i == j) {
+                if (permutation(seedCodes[i], seedCodes[j], seedLen, encoder, scorer) >= threshold) {
+                    (**seeds)[seedCodes[i]].push_back(seedCodes[j]);
+                }
+            } else if (permute == 1) {
+                if (permutation(seedCodes[i], seedCodes[j], seedLen, encoder, scorer) >= threshold) {
+                    (**seeds)[seedCodes[i]].push_back(seedCodes[j]);
+                    (**seeds)[seedCodes[j]].push_back(seedCodes[i]);
+                }
+            } else {
+                break;
             }
         }
     }
+
+    delete[] encoder;
 }
 
-static void aaPermutationsDelete(Data* permutations) {
-    dataDelete(permutations);
+static void seedsDelete(Data* seeds) {
+    dataDelete(seeds);
 }
 
-static void queryCodesCreate(Data** queryCodes, Chain** queries, int queriesLen,
-    int seedLen, int permute, Scorer* scorer, int aaScore) {
+static int permutation(int code1, int code2, int seedLen, int* encoder, Scorer* scorer) {
 
-    dataCreate(queryCodes, queriesLen);
+    int score = 0;
 
-    Data* aaPermutations = NULL;
-    if (permute) {
-        aaPermutationsCreate(&aaPermutations, scorer, aaScore);
+    for (int i = 0; i < seedLen; ++i) {
+        int aa1 = (code1 & EMASK[i]) >> (i * 5);
+        int aa2 = (code2 & EMASK[i]) >> (i * 5);
+
+        score += scorerScore(scorer, encoder[aa1], encoder[aa2]);
     }
 
-    int code, prevCode = -1, aa, i, j;
-    unsigned int k;
+    return score;
+}
+
+static void queryCodesCreate(Codes** queryCodes, Chain** queries, int queriesLen,
+    int seedLen, Data* seeds) {
+
+    codesCreate(queryCodes, queriesLen);
+
+    int code, /*prevCode = -1,*/ i;
+    unsigned int j;
 
     // long long size = 0;
 
@@ -436,80 +514,23 @@ static void queryCodesCreate(Data** queryCodes, Chain** queries, int queriesLen,
         for (i = 0; i < chainGetLength(queries[queryIdx]) - seedLen + 1; ++i) {
 
             code = seedCode(queries[queryIdx], i, seedLen);
-            if (code == prevCode) continue;
+            // if (code == prevCode) continue;
 
-            (**queryCodes)[queryIdx].push_back(code);
-
-            if (permute) {
-                for (j = 0; j < seedLen; ++j) {
-                    aa = (code & EMASK[j]) >> (j * 5);
-
-                    for (k = 0; k < (*aaPermutations)[aa].size(); ++k) {
-                        (**queryCodes)[queryIdx].push_back((code & DMASK[j]) |
-                            (*aaPermutations)[aa][k] << (j * 5));
-                    }
-                }
+            for (j = 0; j < (*seeds)[code].size(); ++j) {
+                (**queryCodes)[queryIdx].push_back(make_tuple((*seeds)[code][j], i));
             }
 
-            prevCode = code;
+            // prevCode = code;
         }
 
         // size += (**queryCodes)[queryIdx].size();
     }
 
-    if (permute) {
-        aaPermutationsDelete(aaPermutations);
-    }
-
     // fprintf(stderr, "Total query seedCodes size = %lld\n", size);
 }
 
-static void queryCodesDelete(Data* queryCodes) {
-    dataDelete(queryCodes);
-}
-
-static int lisScore(vector<uint16>* x) {
-    // m[j] stores the index k of the smallest value x[k] such that
-    // there is an increasing subsequence of length j ending at x[k]
-    int* m = new int[x->size() + 1]();
-
-    int len = 0, newLen;
-    int lo, hi, mid;
-
-    for (unsigned int i = 0; i < x->size(); ++i) {
-        // Binary search for the largest positive <= len
-        // such that x[m[j]] < x[i]
-        lo = 1;
-        hi = len;
-
-        while (lo <= hi) {
-            mid = (lo + hi) / 2;
-            if ((*x)[m[mid]] < (*x)[i]) {
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-
-        // After searching, lo is 1 greater than the length of the
-        // longest prefix of x[i]
-        newLen = lo;
-
-        if (newLen > len) {
-            // If a longer subsequence is found than any so far,
-            // update m and len
-            m[newLen] = i;
-            len = newLen;
-        } else if ((*x)[i] < (*x)[m[newLen]]) {
-            // If a smaller value for the subsequence of length newLen
-            // is found, only update m
-            m[newLen] = i;
-        }
-    }
-
-    delete[] m;
-
-    return len;
+static void queryCodesDelete(Codes* queryCodes) {
+    codesDelete(queryCodes);
 }
 
 static void hashCreate(Data** hash, int seedLen) {
@@ -544,34 +565,158 @@ static void dataDelete(Data* data) {
     delete data;
 }
 
+static void codesCreate(Codes** codes, int len) {
+    vector<Code> vc;
+    (*codes) = new Codes(len, vc);
+}
+
+static void codesDelete(Codes* codes) {
+    for (unsigned int i = 0; i < codes->size(); ++i) {
+        if ((*codes)[i].size() > 0) {
+            vector<Code>().swap((*codes)[i]);
+        }
+    }
+    codes->clear();
+    delete codes;    
+}
+
 static void candidatesCreate(Candidates** candidates, int len) {
-    vector<pair<int, double> > vid;
-    (*candidates) = new Candidates(len, vid);
+    vector<Candidate> vc;
+    (*candidates) = new Candidates(len, vc);
 }
 
 static void candidatesDelete(Candidates* candidates) {
     for (unsigned int i = 0; i < candidates->size(); ++i) {
         if ((*candidates)[i].size() > 0) {
-            vector<pair<int, double> >().swap((*candidates)[i]);
+            vector<Candidate>().swap((*candidates)[i]);
         }
     }
     candidates->clear();
     delete candidates;
 }
 
-static void positionsCreate(Positions** positions, int len) {
-    vector<uint16> vus;
-    (*positions) = new Positions(len, vus);
+static void hAlignmentsCreate(HAlignments** alignments, int len) {
+    map<int, HAlignment> mia;
+    (*alignments) = new HAlignments(len, mia);
 }
 
-static void positionsDelete(Positions* positions) {
-    for (unsigned int i = 0; i < positions->size(); ++i) {
-        if ((*positions)[i].size() > 0) {
-            vector<uint16>().swap((*positions)[i]);
+static void hAlignmentScore(HAlignment* alignment, Chain* query, Chain* target,
+    Scorer* scorer) {
+
+    uint16 qstart = get<0>(*alignment);
+    uint16 tstart = get<2>(*alignment);
+    uint16 hAlignmentLen = get<1>(*alignment) - get<0>(*alignment) + 1;
+
+    int score = 0;
+
+    for (uint16 i = 0; i < hAlignmentLen; ++i) {
+        score += scorerScore(scorer, 
+            scorerEncode(chainGetChar(query, qstart + i)),
+            scorerEncode(chainGetChar(target, tstart + i)));
+    }
+
+    get<4>(*alignment) = score;
+}
+
+static void hAlignmentExtendLeft(HAlignment* alignment, Chain* query, Chain* target,
+   uint16 extendLen, Scorer* scorer) {
+
+    uint16 qstart = get<0>(*alignment);
+    uint16 tstart = get<2>(*alignment);
+
+    uint16 maxExtendLen = MIN(qstart, tstart);
+    extendLen = MIN(extendLen, maxExtendLen);
+
+    uint16 i;
+    int score = 0, substScore;
+
+    if (extendLen == 0) {
+        for (i = 1; i < maxExtendLen + 1; ++i) {
+            substScore = scorerScore(scorer,
+                scorerEncode(chainGetChar(query, qstart - i)),
+                scorerEncode(chainGetChar(target, tstart - i)));
+
+            if (substScore < 0) break;
+            score += substScore;
+        }
+
+        get<0>(*alignment) -= (i - 1);
+        get<2>(*alignment) -= (i - 1);
+
+    } else {
+        for (uint16 i = 1; i < extendLen + 1; ++i) {
+           score += scorerScore(scorer,
+               scorerEncode(chainGetChar(query, qstart - i)),
+               scorerEncode(chainGetChar(target, tstart - i)));
+        }
+
+        get<0>(*alignment) -= extendLen;
+        get<2>(*alignment) -= extendLen;
+    }
+
+    get<4>(*alignment) += score;
+}
+
+static void hAlignmentExtendRight(HAlignment* alignment, Chain* query, Chain* target,
+    uint16 extendLen, Scorer* scorer) {
+
+    uint16 qend = get<1>(*alignment);
+    uint16 tend = get<3>(*alignment);
+
+    uint16 maxExtendLen = MIN(
+        chainGetLength(query) - qend - 1,
+        chainGetLength(target) - tend - 1);
+
+    extendLen = MIN(extendLen, maxExtendLen);
+
+    uint16 i;
+    int score = 0, substScore;
+
+    if (extendLen == 0) {
+        for (i = 1; i < maxExtendLen + 1; ++i) {
+            substScore = scorerScore(scorer,
+                scorerEncode(chainGetChar(query, qend + i)),
+                scorerEncode(chainGetChar(target, tend + i)));
+
+            if (substScore < 0) break;
+            score += substScore;
+        }
+
+        get<1>(*alignment) += (i - 1);
+        get<3>(*alignment) += (i - 1);
+
+    } else {
+        for (i = 1; i < extendLen + 1; ++i) {
+            score += scorerScore(scorer,
+                scorerEncode(chainGetChar(query, qend + i)),
+                scorerEncode(chainGetChar(target, tend + i)));
+        }
+
+        get<1>(*alignment) += extendLen;
+        get<3>(*alignment) += extendLen;
+    }
+
+    get<4>(*alignment) += score;
+}
+
+static void hAlignmentsDelete(HAlignments* alignments) {
+    for (unsigned int i = 0; i < alignments->size(); ++i) {
+        if ((*alignments)[i].size() > 0) {
+            map<int, HAlignment>().swap((*alignments)[i]);
         }
     }
-    positions->clear();
-    delete positions;
+    alignments->clear();
+    delete alignments;
+}
+
+static void maximaCreate(Maxima** maxima, int len) {
+    Maximum m;
+    (*maxima) = new vector<Maximum>(len, m);
+}
+
+static void maximaDelete(Maxima* maxima) {
+    vector<Maximum>().swap(*maxima);
+    delete maxima;
 }
 
 static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
@@ -658,35 +803,31 @@ static void readVolume(Data* hash, char* databasePath, int seedLen,
     delete[] indexVolume;
 }
 
-/* static double scoreE(int lisLen, int n, int m) {
-    return -1 * n * m * exp(-1 * lisLen);
-} */
-
-static double scoreM(int lisLen, int n, int m) {
-    return lisLen / static_cast<double>(MAX(n, m));
-}
-
 static void* scoreSequences(void* param) {
 
     ThreadData* threadData = static_cast<ThreadData*>(param);
 
     int taskStart = threadData->taskStart;
     int taskEnd = threadData->taskEnd;
+    int seedLen = threadData->seedLen;
     int databaseStart = threadData->databaseStart;
+    int databaseLen = threadData->databaseLen;
     unsigned int maxCandidates = static_cast<unsigned int>(threadData->maxCandidates);
     int extractIndices = threadData->extractIndices;
 
     Data* hash = threadData->hash;
     Chain** queries = threadData->queries;
-    Data* queryCodes = threadData->queryCodes;
-    int* targetsLens = threadData->targetsLens;
-    Positions* positions = threadData->positions;
+    Codes* queryCodes = threadData->queryCodes;
+    Chain** database = threadData->database;
+    // int* targetsLens = threadData->targetsLens;
+    Scorer* scorer = threadData->scorer;
+    HAlignments* alignments = threadData->alignments;
+    Maxima* alignMaxima = threadData->alignMaxima;
     Candidates* candidates = threadData->candidates;
     Data* indices = threadData->indices;
 
-    int code, prevCode = -1, candidatesLen, lisLen;
-    double score;
-
+    int code, prevCode = -1;
+    int candidatesLen, score;
     unsigned int i, j;
 
     // ************
@@ -697,25 +838,94 @@ static void* scoreSequences(void* param) {
 
     // ************
 
-    for (int queryIdx = taskStart; queryIdx < taskEnd; ++queryIdx) {
+    int queryIdx, qstart, targetIdx, tstart;
+    int d, dLen, extendLen;
+
+    HAlignment al;
+    Maximum m;
+
+    int* dLens = new int[databaseLen];
+
+    for (queryIdx = taskStart; queryIdx < taskEnd; ++queryIdx) {
+
+        // int queryLen = chainGetLength(queries[queryIdx]);
 
         // (*candidates)[queryIdx].reserve(
         //    (*candidates)[queryIdx].size() + positions->size());
 
         (*candidates)[queryIdx].reserve(maxCandidates);
 
-        double min = (*candidates)[queryIdx].size() == maxCandidates ?
-            (*candidates)[queryIdx][maxCandidates - 1].second : 0;
+        int min = (*candidates)[queryIdx].size() == maxCandidates ?
+            get<0>((*candidates)[queryIdx][maxCandidates - 1]) : 100000000;
+
+        (*alignMaxima).assign(databaseLen, m);
+
+        /* for (i = 0; i < static_cast<unsigned int>(databaseLen); ++i) {
+            (*alignments)[i].assign(queryLen - 2 * seedLen + 1 + 
+                + chainGetLength(database[databaseStart + i]), al);
+        } */
+
+        for (i = 0; i < static_cast<unsigned int>(databaseLen); ++i) {
+            dLens[i] = chainGetLength(database[databaseStart + i]) +
+                chainGetLength(queries[queryIdx]) - 2 * seedLen + 1;
+        }
 
         // timerStart(&hashTimer);
 
         for (i = 0; i < (*queryCodes)[queryIdx].size(); ++i) {
 
-            code = (*queryCodes)[queryIdx][i];
+            code = get<0>((*queryCodes)[queryIdx][i]);
             if (code == prevCode) continue;
 
+            qstart = get<1>((*queryCodes)[queryIdx][i]);
+
             for (j = 0; j < (*hash)[code].size(); j += 2) {
-                (*positions)[(*hash)[code][j]].push_back((*hash)[code][j + 1]);
+
+                targetIdx = (*hash)[code][j];
+                tstart = (*hash)[code][j + 1];
+
+                // dLen = (*alignments)[targetIdx].size();
+                dLen = dLens[targetIdx];
+                d = ((tstart - qstart + dLen) % dLen);
+
+                if (get<5>((*alignments)[targetIdx][d]) == 1) {
+
+                    if ((qstart - get<1>((*alignments)[targetIdx][d])) < A &&
+                        (qstart - get<1>((*alignments)[targetIdx][d])) > -1 * seedLen) { // 2nd statement maybe not needed
+
+                        extendLen = qstart + seedLen - get<1>((*alignments)[targetIdx][d]) - 1;
+
+                        hAlignmentExtendRight(&(*alignments)[targetIdx][d], queries[queryIdx],
+                            database[targetIdx], extendLen, scorer);
+
+                    } else {
+                        if (get<1>((*alignments)[targetIdx][d]) - 
+                            get<0>((*alignments)[targetIdx][d]) > 2 * seedLen + 1) continue;
+
+                        // printf("Updating\n");
+
+                        get<0>((*alignments)[targetIdx][d]) = qstart;
+                        get<1>((*alignments)[targetIdx][d]) = qstart + seedLen - 1;
+                        get<2>((*alignments)[targetIdx][d]) = tstart;
+                        get<3>((*alignments)[targetIdx][d]) = tstart + seedLen - 1;
+                        hAlignmentScore(&(*alignments)[targetIdx][d], queries[queryIdx],
+                            database[targetIdx], scorer);
+                    }
+
+                } else {
+                    get<0>((*alignments)[targetIdx][d]) = qstart;
+                    get<1>((*alignments)[targetIdx][d]) = qstart + seedLen - 1;
+                    get<2>((*alignments)[targetIdx][d]) = tstart;
+                    get<3>((*alignments)[targetIdx][d]) = tstart + seedLen - 1;
+                    get<5>((*alignments)[targetIdx][d]) = 1;
+                    hAlignmentScore(&(*alignments)[targetIdx][d], queries[queryIdx],
+                        database[targetIdx], scorer);
+                }
+
+                if (get<0>((*alignMaxima)[targetIdx]) < get<4>((*alignments)[targetIdx][d])) {
+                    get<0>((*alignMaxima)[targetIdx]) = get<4>((*alignments)[targetIdx][d]);
+                    get<1>((*alignMaxima)[targetIdx]) = d;
+                }
             }
 
             prevCode = code;
@@ -724,24 +934,28 @@ static void* scoreSequences(void* param) {
         /* hashTotal += timerStop(&hashTimer);
         timerStart(&lisTimer); */
 
-        for (i = 0; i < positions->size(); ++i) {
-            if ((*positions)[i].size() == 0) continue;
+        for (targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
 
-            lisLen = lisScore(&((*positions)[i]));
+            d = get<1>((*alignMaxima)[targetIdx]);
 
-            score = scoreM(lisLen, chainGetLength(queries[queryIdx]),
-                targetsLens[databaseStart + i]);
+            if (get<0>((*alignments)[targetIdx][d]) == 
+                get<1>((*alignments)[targetIdx][d])) continue;
 
-            // score = scoreE(lisLen, chainGetLength(queries[queryIdx]),
-            //    targetsLens[databaseStart + i]);
+            hAlignmentExtendLeft(&(*alignments)[targetIdx][d], queries[queryIdx],
+                database[targetIdx], 0, scorer);
 
+            hAlignmentExtendRight(&(*alignments)[targetIdx][d], queries[queryIdx],
+                database[targetIdx], 0, scorer);
+
+            score = get<4>((*alignments)[targetIdx][d]);
+            
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
-                (*candidates)[queryIdx].push_back(make_pair(databaseStart + i, score));
+                (*candidates)[queryIdx].push_back(make_tuple(score, databaseStart + targetIdx));
 
                 min = score < min ? score : min;
             }
 
-            (*positions)[i].clear();
+            (*alignments)[targetIdx].clear();
         }
 
         // lisTotal += timerStop(&lisTimer);
@@ -760,7 +974,7 @@ static void* scoreSequences(void* param) {
 
             candidatesLen = MIN(maxCandidates, (*candidates)[queryIdx].size());
 
-            vector<pair<int, double> > temp(
+            vector<Candidate> temp(
                 (*candidates)[queryIdx].begin(),
                 (*candidates)[queryIdx].begin() + candidatesLen);
 
@@ -776,10 +990,13 @@ static void* scoreSequences(void* param) {
             (*indices)[queryIdx].reserve((*candidates)[queryIdx].size());
 
             for (i = 0; i < (*candidates)[queryIdx].size(); ++i) {
-                (*indices)[queryIdx].push_back((*candidates)[queryIdx][i].first);
+                (*indices)[queryIdx].push_back(get<1>((*candidates)[queryIdx][i]));
+
+                // fprintf(stderr, "(%d: %d)\n", get<1>((*candidates)[queryIdx][i]),
+                //    get<0>((*candidates)[queryIdx][i])); 
             }
 
-            vector<pair<int, double> >().swap((*candidates)[queryIdx]);
+            vector<Candidate>().swap((*candidates)[queryIdx]);
 
             /* extractTotal += timerStop(&extractTimer);
             timerStart(&indicesTimer); */
@@ -791,6 +1008,8 @@ static void* scoreSequences(void* param) {
             // indicesTotal += timerStop(&indicesTimer);
         }
     }
+
+    delete[] dLens;
 
     delete threadData;
 

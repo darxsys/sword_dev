@@ -2,12 +2,13 @@
 #define __AC_AUTOMATONHH__
 
 #include "ac_node.h"
+#include "swsharp/swsharp.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern ACNode* createAutomaton(int kmerSize);
+extern ACNode* createAutomaton(int seedLen, Chain* query);
 
 #ifdef __cplusplus    
 }

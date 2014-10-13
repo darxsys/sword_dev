@@ -220,8 +220,6 @@ int main(int argc, char* argv[]) {
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
 
-    ACNode* automaton = automatonCreate(seedLen, queries[0]);
-
     threadPoolInitialize(cardsLen + 8);
 
     Scorer* scorer;

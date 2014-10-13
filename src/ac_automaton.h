@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-extern ACNode* createAutomaton(int seedLen, Chain* query);
+extern ACNode* automatonCreate(int seedLen, Chain* query);
 
 #ifdef __cplusplus    
 }

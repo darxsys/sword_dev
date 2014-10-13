@@ -2,7 +2,7 @@
 #define __AC_NODEHH__
 
 typedef struct {
-    bool final;
+    int final;
 } ACNode;
 
 #endif // __AC_NODEHH__

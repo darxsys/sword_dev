@@ -129,8 +129,6 @@ int main(int argc, char* argv[]) {
     int permute = 0;
     int aaScore = 0;
 
-    ACNode* automaton = createAutomaton(4);
-
     while (1) {
 
         char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h", options, NULL);
@@ -222,6 +220,8 @@ int main(int argc, char* argv[]) {
     Chain** queries = NULL;
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
+
+    ACNode* automaton = automatonCreate(seedLen, queries[0]);
 
     threadPoolInitialize(cardsLen + 8);
 

@@ -28,5 +28,8 @@
 *.out
 *.app
 
+#exe
+swsharpdbh
+
 # Temporary files
 todo.txt

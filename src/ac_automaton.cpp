@@ -65,14 +65,12 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen) {
             // create new node
             Node* next = new Node();
             q->transitions[word[i]] = next;
-
-            if (i == wordLen - 1) {
-                next->final = 1;
-            }
         }
-        
+
         q = q->transitions[word[i]];
     }
+
+    q->final = 1;
 }
 
 static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {

@@ -29,7 +29,6 @@ Contact the swsharp author by mkorpar@gmail.com.
 #include "timer.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
-#include "ac_automaton.h"
 
 #define ASSERT(expr, fmt, ...)\
     do {\

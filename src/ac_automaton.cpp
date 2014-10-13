@@ -11,6 +11,13 @@ using namespace std;
 #include "swsharp/swsharp.h"
 
 // ***************************************************************************
+// PRIVATE
+static void extractSeed(Chain* query, int pos, int len, char** output);
+static void automatonAddWord(ACNode* root, char* word);
+static void automatonSetSupply(ACNode* root, Chai* query, int queryLen);
+
+
+// ***************************************************************************
 // PUBLIC
 
 extern ACNode* automatonCreate(int seedLen, Chain* query) {
@@ -55,5 +62,5 @@ static void automatonAddWord(ACNode* root, char* word) {
 }
 
 static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
-    
+
 }

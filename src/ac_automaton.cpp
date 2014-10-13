@@ -112,8 +112,8 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
                 next->sup = v->transitions[letter];
             }
 
-            next->wordLocations.splice(
-                next->wordLocations.end(), v->wordLocations);
+            next->wordLocations.splice(next->wordLocations.end(), 
+                v->wordLocations);
         }    
     }
 }    

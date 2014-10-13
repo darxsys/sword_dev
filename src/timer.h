@@ -18,4 +18,5 @@ extern void timerPrint(char message[], long long usec);
 #ifdef __cplusplus
 }
 #endif
+
 #endif  // __TIMERH__

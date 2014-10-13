@@ -29,6 +29,7 @@ Contact the swsharp author by mkorpar@gmail.com.
 #include "timer.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
+#include "ac_automaton.h"
 
 #define ASSERT(expr, fmt, ...)\
     do {\
@@ -127,6 +128,8 @@ int main(int argc, char* argv[]) {
     int progress = 0;
     int permute = 0;
     int aaScore = 0;
+
+    ACNode* automaton = createAutomaton(4);
 
     while (1) {
 

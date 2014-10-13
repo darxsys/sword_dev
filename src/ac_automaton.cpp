@@ -14,7 +14,8 @@ using namespace std;
 // ***************************************************************************
 // PRIVATE
 static void extractSeed(Chain* query, int pos, int len, char** output);
-static void automatonAddWord(ACNode* root, char* word, int wordLen);
+static void automatonAddWord(ACNode* root, char* word, int wordLen, 
+    int location);
 static void automatonSetSupply(ACNode* root, Chain* query, int queryLen);
 
 
@@ -82,9 +83,9 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
     root->sup = root;
 
     queue <ACNode*> nodeQ;
-    unordered_map<char, ACNode*>::iterator it = q->transitions->begin();
+    unordered_map<char, ACNode*>::iterator it = q->transitions.begin();
 
-    for (; it != q->transitions->end(); ++it) {
+    for (; it != q->transitions.end(); ++it) {
         it->second->sup = root;
         nodeQ.push(it->second);
     }
@@ -93,8 +94,8 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
         q = nodeQ.front();
         nodeQ.pop();
 
-        it = q->transitions->begin();
-        for (; it != q->transitions->end(); ++it) {
+        it = q->transitions.begin();
+        for (; it != q->transitions.end(); ++it) {
             char letter = it->first;
             ACNode* next = it->second;
 

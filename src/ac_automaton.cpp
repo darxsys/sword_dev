@@ -22,7 +22,7 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen);
 
 extern ACNode* automatonCreate(int seedLen, Chain* query) {
     ACNode* root = new ACNode();
-    root->final = false;
+    root->final = 0;
 
     // first create a trie by sampling the query
     int queryLen = chainGetLength(query);
@@ -32,7 +32,7 @@ extern ACNode* automatonCreate(int seedLen, Chain* query) {
     for (int i = 0; i < queryLen - seedLen + 1; ++i) {
         extractSeed(query, i, seedLen, &seed);
 
-        automatonAddWord(root, seed);
+        automatonAddWord(root, seed, seedLen);
     }
 
     // now find all the supply links
@@ -57,8 +57,22 @@ static void extractSeed(Chain* query, int pos, int len, char** output) {
     (*output)[len] = '\0';
 }
 
-static void automatonAddWord(ACNode* root, char* word) {
+static void automatonAddWord(ACNode* root, char* word, int wordLen) {
+    ACNode* q = root;
 
+    for (int i = 0; i < wordLen; ++i) {
+        if (q->transitions.count(word[i]) == 0) {
+            // create new node
+            Node* next = new Node();
+            q->transitions[word[i]] = next;
+
+            if (i == wordLen - 1) {
+                next->final = 1;
+            }
+        }
+        
+        q = q->transitions[word[i]];
+    }
 }
 
 static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {

@@ -2,13 +2,19 @@
 #define __AC_NODEHH__
 
 #include <unordered_map>
+#include <list>
 
-typedef struct ACNode ACNode;
-
-typedef struct {
+typedef struct AhoCorasick {
     int final;
 
-    std::unordered_map<char, ACNode*> transitions;
+    // supply link (fail link)
+    AhoCorasick* sup; 
+
+    // next states
+    std::unordered_map<char, AhoCorasick*> transitions;
+
+    // matching locations
+    list<int> wordLocations;
 } ACNode;
 
 #endif // __AC_NODEHH__

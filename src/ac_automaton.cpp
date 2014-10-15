@@ -60,8 +60,10 @@ extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLe
 extern void automatonDeleteAutomata(void* automata, int queriesLen) {
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     for (int i = 0; i < queriesLen; ++i) {
-        automatonDelete(aut[i]);
+        automatonDelete((*aut)[i]);
     }
+
+    delete[] aut;
 }
 
 // ***************************************************************************

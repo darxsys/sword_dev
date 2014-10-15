@@ -31,7 +31,7 @@ static void extractSeed(Chain* query, int pos, int len, char** output);
 static void automatonAddWord(ACNode* root, char* word, int wordLen, 
     int location);
 static void automatonSetSupply(ACNode* root, Chain* query, int queryLen);
-
+static ACNode* automatonCreate(int seedLen, Chain* query);
 
 // ***************************************************************************
 
@@ -45,18 +45,19 @@ extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database,
 }
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen) {
-    vector<ACNode*> automata = new vector<ACNode*>;
+    vector<ACNode*>* automata = new vector<ACNode*>;
 
     for (int i = 0; i < queriesLen; ++i) {
-        automata.push_back(automatonCreate(seedlen, queries[i]));
+        automata->push_back(automatonCreate(seedLen, queries[i]));
     }
 
     return static_cast<void*>(automata);
 }
 
 extern void automatonDeleteAutomata(void* automata, int queriesLen) {
+    vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     for (int i = 0; i < queriesLen; ++i) {
-        automatonDelete(static_cast<ACNode*>(automata[i]));
+        automatonDelete(aut[i]);
     }
 }
 
@@ -180,8 +181,8 @@ static void automatonDelete(ACNode* root) {
             nodeQ.push(it->second);
         }
 
-        curr->transitions->clear();
-        curr->wordLocations->clear();
+        curr->transitions.clear();
+        curr->wordLocations.clear();
         delete[] curr;
     }
 }

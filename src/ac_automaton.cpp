@@ -21,7 +21,7 @@ extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database,
     int automataLen, int seedLen, Scorer* scorer);
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
-extern void automatonDeleteAutomata(void* automata, int queriesLen);
+extern void automatonDeleteAutomata(void* automata, int automataLen);
 
 // ***************************************************************************
 
@@ -57,9 +57,9 @@ extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLe
     return static_cast<void*>(automata);
 }
 
-extern void automatonDeleteAutomata(void* automata, int queriesLen) {
+extern void automatonDeleteAutomata(void* automata, int automataLen) {
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
-    for (int i = 0; i < queriesLen; ++i) {
+    for (int i = 0; i < automataLen; ++i) {
         automatonDelete((*aut)[i]);
     }
 
@@ -167,8 +167,6 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
     }
 }    
 
-// ***************************************************************************
-
 /**
     Deletes all the automaton nodes using bfs.
 */
@@ -191,3 +189,5 @@ static void automatonDelete(ACNode* root) {
         delete[] curr;
     }
 }
+
+// ***************************************************************************

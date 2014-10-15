@@ -12,7 +12,7 @@ extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database,
     int automataLen, int seedLen, Scorer* scorer);
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
-extern void automatonDeleteAutomata(void* automata, int queriesLen);
+extern void automatonDeleteAutomata(void* automata, int automataLen);
 
 #ifdef __cplusplus    
 }

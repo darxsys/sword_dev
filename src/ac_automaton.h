@@ -8,8 +8,8 @@ extern "C" {
 #endif
 
 extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database, 
-    int databaseStart, int databaseLen, Chain** queries,
-    int queriesLen, int seedLen, Scorer* scorer);
+    int databaseStart, int databaseLen, void* automata,
+    int automataLen, int seedLen, Scorer* scorer);
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
 extern void automatonDeleteAutomata(void* automata, int queriesLen);

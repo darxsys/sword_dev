@@ -232,15 +232,18 @@ int main(int argc, char* argv[]) {
 
     Scorer* scorer;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
+    void* indices = NULL;
 
-    void* indices = databaseIndicesCreate(databasePath, queries, queriesLen,
-        seedLen, maxCandidates, progress, permute, scorer, aaScore);
+    if (!useAutomata) {
+        indices = databaseIndicesCreate(databasePath, queries, queriesLen,
+            seedLen, maxCandidates, progress, permute, scorer, aaScore);
+    }
 
     /* Timeval swTimer, dbTimer;
     long long dbTotal = 0, swTotal = 0;
     timerStart(&swTimer); */
 
-    if (indices != NULL) {
+    if (indices != NULL || useAutomata) {
 
         if (cache) {
             dumpFastaChains(databasePath);
@@ -266,10 +269,10 @@ int main(int argc, char* argv[]) {
             &serialized, databasePath);
 
         int i, j;
+        void* automata;
 
-        // creation of automatons for each query
-        for (i = 0; i < queriesLen; ++i) {
-
+        if (useAutomata) {
+            automata = automatonCreateAutomata(seedLen, queries, queriesLen);
         }
 
         while (1) {
@@ -288,6 +291,13 @@ int main(int argc, char* argv[]) {
 
             int* usedIndices = NULL;
             char* usedMask = (char*) calloc(databaseLen, sizeof(char));
+
+            // automata candidates
+            if (useAutomata) {
+                indices = filteredDatabaseIndicesAutomatonCreate(database,
+                    databaseStart, databaseLen, automata, automataLen, 
+                    seedLen, scorer);
+            }
 
             for (i = 0; i < queriesLen; ++i) {
 
@@ -332,6 +342,10 @@ int main(int argc, char* argv[]) {
                 filteredDatabaseDelete(filteredDatabase);
             }
 
+            if (useAutomata) {
+                databaseIndicesDelete(indices);
+            }
+
             if (dbAlignments == NULL) {
                 dbAlignments = dbAlignmentsPart;
                 dbAlignmentsLens = dbAlignmentsPartLens;
@@ -366,7 +380,9 @@ int main(int argc, char* argv[]) {
 
         deleteFastaChains(database, databaseLen);
 
-        databaseIndicesDelete(indices);
+        if (!useAutomata) {
+            databaseIndicesDelete(indices);
+        }
     }
 
     /* swTotal = timerStop(&swTimer);

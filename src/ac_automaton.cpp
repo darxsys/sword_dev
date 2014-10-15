@@ -10,6 +10,19 @@ using namespace std;
 
 #include "ac_automaton.h"
 #include "swsharp/swsharp.h"
+#include "database_hash.h"
+
+// ***************************************************************************
+// PUBLIC
+
+extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database, 
+    int databaseStart, int databaseLen, Chain** queries,
+    int queriesLen, int seedLen, Scorer* scorer);
+
+extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
+extern void automatonDeleteAutomata(void* automata, int queriesLen);
+
+// ***************************************************************************
 
 // ***************************************************************************
 // PRIVATE
@@ -20,9 +33,37 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen);
 
 
 // ***************************************************************************
-// PUBLIC
 
-extern ACNode* automatonCreate(int seedLen, Chain* query) {
+// ***************************************************************************
+// PUBLIC
+extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database, 
+    int databaseStart, int databaseLen, Chain** queries,
+    int queriesLen, int seedLen, Scorer* scorer) {
+
+    return NULL;
+}
+
+extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen) {
+    vector<ACNode*> automata = new vector<ACNode*>;
+
+    for (int i = 0; i < queriesLen; ++i) {
+        automata.push_back(automatonCreate(seedlen, queries[i]));
+    }
+
+    return static_cast<void*>(automata);
+}
+
+extern void automatonDeleteAutomata(void* automata, int queriesLen) {
+    for (int i = 0; i < queriesLen; ++i) {
+        automatonDelete(static_cast<ACNode*>(automata[i]));
+    }
+}
+
+// ***************************************************************************
+
+// ***************************************************************************
+// PRIVATE
+static ACNode* automatonCreate(int seedLen, Chain* query) {
     ACNode* root = new ACNode();
     root->final = 0;
 
@@ -45,11 +86,6 @@ extern ACNode* automatonCreate(int seedLen, Chain* query) {
     return root;
 }
 
-// ***************************************************************************
-
-// ***************************************************************************
-// PRIVATE
-
 static void extractSeed(Chain* query, int pos, int len, char** output) {
     for (int i = pos; i < pos + len; ++i) {
 
@@ -69,6 +105,7 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
             // create new node
             ACNode* next = new ACNode();
             q->transitions[word[i]] = next;
+            next->final = 0;
         }
 
         q = q->transitions[word[i]];
@@ -82,7 +119,7 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
     ACNode* q = root;
     root->sup = root;
 
-    queue <ACNode*> nodeQ;
+    queue<ACNode*> nodeQ;
     unordered_map<char, ACNode*>::iterator it = q->transitions.begin();
 
     for (; it != q->transitions.end(); ++it) {
@@ -115,8 +152,35 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
 
             next->wordLocations.splice(next->wordLocations.end(), 
                 v->wordLocations);
+
+            if (v->final) {
+                next->final = 1;
+            }
         }    
     }
 }    
 
 // ***************************************************************************
+
+/**
+    Deletes all the automaton nodes using bfs.
+*/
+static void automatonDelete(ACNode* root) {
+    queue<ACNode*> nodeQ;
+
+    nodeQ.push(root);
+
+    while (!nodeQ.empty()) {
+        ACNode* curr = nodeQ.front();
+        nodeQ.pop();
+
+        unordered_map<char, ACNode*>::iterator it = curr->transitions.begin();
+        for(; it != curr->transitions.end(); ++it) {
+            nodeQ.push(it->second);
+        }
+
+        curr->transitions->clear();
+        curr->wordLocations->clear();
+        delete[] curr;
+    }
+}

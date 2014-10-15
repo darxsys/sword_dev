@@ -27,8 +27,10 @@ Contact the swsharp author by mkorpar@gmail.com.
 
 #include "database_hash.h"
 #include "timer.h"
+#include "ac_automaton.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
+
 
 #define ASSERT(expr, fmt, ...)\
     do {\
@@ -66,6 +68,7 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
+    {"use-automata", required_argument, 0, 'a'},
     {"progress", no_argument, 0, 'r'},
     {"permute", required_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
@@ -128,9 +131,11 @@ int main(int argc, char* argv[]) {
     int permute = 0;
     int aaScore = 0;
 
+    int useAutomata = 0;
+
     while (1) {
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h:a", options, NULL);
 
         if (argument == -1) {
             break;
@@ -188,6 +193,9 @@ int main(int argc, char* argv[]) {
         case 'p':
             permute = 1;
             aaScore = atoi(optarg);
+            break;
+        case 'a':
+            useAutomata = atoi(optarg);
             break;
         case 'h':
         default:
@@ -258,6 +266,11 @@ int main(int argc, char* argv[]) {
             &serialized, databasePath);
 
         int i, j;
+
+        // creation of automatons for each query
+        for (i = 0; i < queriesLen; ++i) {
+
+        }
 
         while (1) {
 

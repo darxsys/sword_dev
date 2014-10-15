@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database, 
+extern void* partialIndicesAutomatonCreate(Chain** database, 
     int databaseStart, int databaseLen, void* automata,
     int automataLen, int seedLen, Scorer* scorer);
 

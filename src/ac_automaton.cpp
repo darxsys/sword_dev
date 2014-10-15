@@ -16,7 +16,7 @@ using namespace std;
 // ***************************************************************************
 // PUBLIC
 
-extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database, 
+extern void* partialIndicesAutomatonCreate(Chain** database, 
     int databaseStart, int databaseLen, void* automata,
     int automataLen, int seedLen, Scorer* scorer);
 
@@ -40,11 +40,13 @@ static void automatonDelete(ACNode* root);
 
 // ***************************************************************************
 // PUBLIC
-extern void* filteredDatabaseIndicesAutomatonCreate(Chain** database, 
+
+extern void* partialIndicesAutomatonCreate(Chain** database,
     int databaseStart, int databaseLen, void* automata,
     int automataLen, int seedLen, Scorer* scorer) {
 
-    return NULL;
+
+    
 }
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen) {

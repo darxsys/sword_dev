@@ -4,16 +4,21 @@
 #include <unordered_map>
 #include <list>
 
+/*
+    State of automaton.
+
+    final - denotes if the current state corresponds to kmers
+    sup - fail link of AC automaton
+    transitions - transition table
+    wordLocations - if state is final, then this list stores 
+        the locations of the current kmer
+
+*/
+
 typedef struct AhoCorasick {
     int final;
-
-    // supply link (fail link)
-    AhoCorasick* sup; 
-
-    // next states
-    std::unordered_map<char, AhoCorasick*> transitions;
-
-    // matching locations
+    AhoCorasick* sup;
+    std::unordered_map<char, AhoCorasick*> transition;
     std::list<int> wordLocations;
 } ACNode;
 

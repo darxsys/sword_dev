@@ -27,6 +27,9 @@ extern void automatonDeleteAutomata(void* automata, int automataLen);
 
 // ***************************************************************************
 // PRIVATE
+typedef vector<vector<int> > Candidates;
+typedef vector<int> Candidate;
+
 static void extractSeed(Chain* query, int pos, int len, char** output);
 
 static void automatonAddWord(ACNode* root, char* word, int wordLen, 
@@ -35,6 +38,10 @@ static void automatonSetSupply(ACNode* root, Chain* query, int queryLen);
 
 static ACNode* automatonCreate(int seedLen, Chain* query);
 static void automatonDelete(ACNode* root);
+
+static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen);
+
+static int seedCode(Chain* chain, int pos, int seedLen);
 
 // ***************************************************************************
 
@@ -45,8 +52,26 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
     int databaseStart, int databaseLen, void* automata,
     int automataLen, int seedLen, Scorer* scorer) {
 
+    vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
+    Candidates* candidates = new Candidates();
 
-    
+    for (int i = 0; i < aut->size(); ++i) {
+
+        ACNode* automaton = (*aut)[i];
+        Candidate queryCandidates;
+
+        for (int j = databaseStart; j < databaseLen; ++j) {
+            Chain* target = database[j];
+
+            // TODO: (querypos, targetpos, seedcode) 
+            // newline for every (query, target)
+            int numHits = automatonTargetHits(automaton, target, seedLen);
+            printf("\n");
+        }
+
+    }
+
+    return NULL;
 }
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen) {
@@ -63,7 +88,7 @@ extern void automatonDeleteAutomata(void* automata, int automataLen) {
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     for (int i = 0; i < automataLen; ++i) {
         automatonDelete((*aut)[i]);
-    }
+  
 
     delete[] aut;
 }
@@ -72,6 +97,46 @@ extern void automatonDeleteAutomata(void* automata, int automataLen) {
 
 // ***************************************************************************
 // PRIVATE
+static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
+    ACNode* state = automaton;
+    int targetLen = chainGetLength(target);
+
+    int numHits = 0;
+
+    for (int i = 0; i < targetLen; ++i) {
+        // try doing a transition. if not possible, move on
+        char c = chainGetChar(target, i);
+
+        if (state->transitions.count(c) == 0) {
+            while (state != automaton && state->transitions.count[c] == 0) {
+                state = state->sup;
+            }
+
+            if (state->transitions.count(c) == 0) {
+                // skip current char
+                continue;
+            }
+        }
+
+        state = state->transitions[c];
+
+        if (state->final) {
+
+            // LOG
+            vector<int>& loc = state->wordLocations;
+            
+            for (int j = 0; j < loc.size(); ++j) {
+                numHits++;
+                int code = seedCode(query, i - seedLen + 1, seedLen);
+                printf("%d %d %d ", loc[j], i - seedLen + 1, code);
+            }
+        }
+    }
+
+    return numHits;
+}
+
+
 static ACNode* automatonCreate(int seedLen, Chain* query) {
     ACNode* root = new ACNode();
     root->final = 0;
@@ -190,6 +255,20 @@ static void automatonDelete(ACNode* root) {
         curr->wordLocations.clear();
         delete[] curr;
     }
+}
+
+//TODO: put this to some utils.c
+static int seedCode(Chain* chain, int pos, int seedLen) {
+
+    int code = 0;
+    int start = 5 * (seedLen - 1);
+
+    for (int i = 0; i < seedLen; ++i) {
+        code += static_cast<int>(toupper(chainGetChar(chain, pos + i)) - 'A')
+            << (start - 5 * i);
+    }
+
+    return code;
 }
 
 // ***************************************************************************

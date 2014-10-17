@@ -294,7 +294,7 @@ int main(int argc, char* argv[]) {
 
             // automata candidates
             if (useAutomata) {
-                indices = filteredDatabaseIndicesAutomatonCreate(database,
+                indices = partialIndicesAutomatonCreate(database,
                     databaseStart, databaseLen, automata,queriesLen, 
                     seedLen, scorer);
             }

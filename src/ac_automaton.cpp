@@ -66,12 +66,17 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
             // TODO: (querypos, targetpos, seedcode) 
             // newline for every (query, target)
             int numHits = automatonTargetHits(automaton, target, seedLen);
+
+            if (numHits > 0) {
+                candidates[i].push_back(j);
+            }
+
             printf("\n");
         }
 
     }
 
-    return NULL;
+    return candidates;
 }
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen) {

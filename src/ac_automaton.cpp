@@ -113,7 +113,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         char c = chainGetChar(target, i);
 
         if (state->transitions.count(c) == 0) {
-            while (state != automaton && state->transitions.count[c] == 0) {
+            while (state != automaton && state->transitions.count(c) == 0) {
                 state = state->sup;
             }
 
@@ -128,12 +128,12 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         if (state->final) {
 
             // LOG
-            vector<int>& loc = state->wordLocations;
+            list<int>::iterator it = state->wordLocations.begin();
             
-            for (int j = 0; j < loc.size(); ++j) {
+            for (; it != state->wordLocations.end(); ++it) {
                 numHits++;
-                int code = seedCode(query, i - seedLen + 1, seedLen);
-                printf("%d %d %d ", loc[j], i - seedLen + 1, code);
+                int code = seedCode(target, i - seedLen + 1, seedLen);
+                printf("%d %d %d ", *it, i - seedLen + 1, code);
             }
         }
     }

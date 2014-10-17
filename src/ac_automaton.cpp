@@ -109,16 +109,16 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
     int numHits = 0;
 
     for (int i = 0; i < targetLen; ++i) {
-        // try doing a transition. if not possible, move on
         char c = chainGetChar(target, i);
 
-        if (state->transitions.count(c) == 0) {
-            while (state != automaton && state->transitions.count(c)     == 0) {
+        if (state->transitions.find(c) == state->transitions.end()) {
+            while (state != automaton && 
+                state->transitions.find(c) == state->transitions.end()) {
+
                 state = state->sup;
             }
 
-            if (state->transitions.count(c) == 0) {
-                // skip current char
+            if (state->transitions.find(c) == state->transitions.end()) {
                 continue;
             }
         }
@@ -132,14 +132,14 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
             
             for (; it != state->wordLocations.end(); ++it) {
                 numHits++;
-                int code = seedCode(target, i - seedLen + 1, seedLen);
-                fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
+                // int code = seedCode(target, i - seedLen + 1, seedLen);
+                // fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
             }
 
         }
     }
 
-    fprintf(stderr, "\n");
+    // fprintf(stderr, "\n");
     return numHits;
 }
 

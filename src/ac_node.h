@@ -5,7 +5,7 @@
 #include <list>
 
 /*
-    State of automaton.
+    State of the automaton.
 
     final - denotes if the current state corresponds to kmers
     sup - fail link of AC automaton

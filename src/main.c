@@ -270,8 +270,16 @@ int main(int argc, char* argv[]) {
         void* automata;
 
         if (useAutomata) {
+            Timeval start;
+            timerStart(&start);
             automata = automatonCreateAutomata(seedLen, queries, queriesLen);
+            long long usec = timerStop(&start);
+
+            timerPrint("Automaton creation time", usec);
         }
+
+        Timeval automataTimer;
+        long long automataTime;
 
         while (1) {
 
@@ -292,9 +300,14 @@ int main(int argc, char* argv[]) {
 
             // automata candidates
             if (useAutomata) {
+                // fprintf(stderr, "Automata test\n");
+                timerStart(&automataTimer);
                 indices = partialIndicesAutomatonCreate(database,
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
+
+                automataTime = timerStop(&automataTimer);
+                timerPrint("Automaton test took", automataTime);
             }
 
             for (i = 0; i < queriesLen; ++i) {

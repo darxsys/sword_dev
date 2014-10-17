@@ -68,7 +68,7 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
-    {"use-automata", required_argument, 0, 'a'},
+    {"use-automata", no_argument, 0, 'a'},
     {"progress", no_argument, 0, 'r'},
     {"permute", required_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},

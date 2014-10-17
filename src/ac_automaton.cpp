@@ -62,18 +62,18 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
         for (int j = databaseStart; j < databaseLen; ++j) {
             Chain* target = database[j];
-
             // TODO: (querypos, targetpos, seedcode) 
             // newline for every (query, target)
             int numHits = automatonTargetHits(automaton, target, seedLen);
 
             if (numHits > 0) {
-                (*candidates)[i].push_back(j);
+                queryCandidates.push_back(j);
             }
 
             printf("\n");
         }
 
+        (*candidates).push_back(queryCandidates);
     }
 
     return candidates;
@@ -113,7 +113,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         char c = chainGetChar(target, i);
 
         if (state->transitions.count(c) == 0) {
-            while (state != automaton && state->transitions.count(c) == 0) {
+            while (state != automaton && state->transitions.count(c)     == 0) {
                 state = state->sup;
             }
 
@@ -133,7 +133,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
             for (; it != state->wordLocations.end(); ++it) {
                 numHits++;
                 int code = seedCode(target, i - seedLen + 1, seedLen);
-                printf("%d %d %d ", *it, i - seedLen + 1, code);
+                printf("(%d %d %d) ", *it, i - seedLen + 1, code);
             }
         }
     }

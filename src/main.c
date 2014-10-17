@@ -270,10 +270,7 @@ int main(int argc, char* argv[]) {
         void* automata;
 
         if (useAutomata) {
-            printf("Creating automata.\n");
             automata = automatonCreateAutomata(seedLen, queries, queriesLen);
-            if (automata != NULL)
-                printf("Automata created\n");
         }
 
         while (1) {
@@ -295,12 +292,9 @@ int main(int argc, char* argv[]) {
 
             // automata candidates
             if (useAutomata) {
-                printf("Fetching indices\n");
                 indices = partialIndicesAutomatonCreate(database,
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
-
-                printf("Done\n");
             }
 
             for (i = 0; i < queriesLen; ++i) {

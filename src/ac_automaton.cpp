@@ -70,7 +70,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
                 queryCandidates.push_back(j);
             }
 
-            printf("\n");
+            // printf("\n");
         }
 
         (*candidates).push_back(queryCandidates);
@@ -95,7 +95,7 @@ extern void automatonDeleteAutomata(void* automata, int automataLen) {
         automatonDelete((*aut)[i]);
      }
 
-    delete[] aut;
+    delete aut;
 }
 
 // ***************************************************************************
@@ -133,11 +133,13 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
             for (; it != state->wordLocations.end(); ++it) {
                 numHits++;
                 int code = seedCode(target, i - seedLen + 1, seedLen);
-                printf("(%d %d %d) ", *it, i - seedLen + 1, code);
+                fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
             }
+
         }
     }
 
+    fprintf(stderr, "\n");
     return numHits;
 }
 
@@ -258,7 +260,7 @@ static void automatonDelete(ACNode* root) {
 
         curr->transitions.clear();
         curr->wordLocations.clear();
-        delete[] curr;
+        delete curr;
     }
 }
 

@@ -18,8 +18,8 @@
 typedef struct AhoCorasick {
     int final;
     AhoCorasick* sup;
-    std::unordered_map<char, AhoCorasick*> transition;
-    std::list<int> wordLocations;
+    std::unordered_map<char, AhoCorasick*> transitions;
+    std::vector<int> wordLocations;
 } ACNode;
 
 #endif // __AC_NODEHH__

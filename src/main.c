@@ -100,7 +100,6 @@ static void valueFunction(double* values, int* scores, Chain* query,
     Chain** database, int databaseLen, int* cards, int cardsLen, void* param);
 
 int main(int argc, char* argv[]) {
-
     char* queryPath = NULL;
     char* databasePath = NULL;
 
@@ -134,8 +133,7 @@ int main(int argc, char* argv[]) {
     int useAutomata = 0;
 
     while (1) {
-
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h:a", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h:a:", options, NULL);
 
         if (argument == -1) {
             break;
@@ -272,7 +270,10 @@ int main(int argc, char* argv[]) {
         void* automata;
 
         if (useAutomata) {
+            printf("Creating automata.\n");
             automata = automatonCreateAutomata(seedLen, queries, queriesLen);
+            if (automata != NULL)
+                printf("Automata created\n");
         }
 
         while (1) {
@@ -294,9 +295,12 @@ int main(int argc, char* argv[]) {
 
             // automata candidates
             if (useAutomata) {
+                printf("Fetching indices\n");
                 indices = partialIndicesAutomatonCreate(database,
-                    databaseStart, databaseLen, automata,queriesLen, 
+                    databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
+
+                printf("Done\n");
             }
 
             for (i = 0; i < queriesLen; ++i) {

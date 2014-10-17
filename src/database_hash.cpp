@@ -436,7 +436,7 @@ static void queryCodesCreate(Data** queryCodes, Chain** queries, int queriesLen,
         for (i = 0; i < chainGetLength(queries[queryIdx]) - seedLen + 1; ++i) {
 
             code = seedCode(queries[queryIdx], i, seedLen);
-            if (code == prevCode) continue;
+            // if (code == prevCode) continue;
 
             (**queryCodes)[queryIdx].push_back(code);
 
@@ -712,10 +712,11 @@ static void* scoreSequences(void* param) {
         for (i = 0; i < (*queryCodes)[queryIdx].size(); ++i) {
 
             code = (*queryCodes)[queryIdx][i];
-            if (code == prevCode) continue;
+            // if (code == prevCode) continue;
 
             for (j = 0; j < (*hash)[code].size(); j += 2) {
                 (*positions)[(*hash)[code][j]].push_back((*hash)[code][j + 1]);
+                fprintf(stderr, "(%d, %d, %d)|", i, (*hash)[code][j + 1], code);
             }
 
             prevCode = code;

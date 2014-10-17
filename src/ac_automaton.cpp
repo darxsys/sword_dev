@@ -68,7 +68,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
             int numHits = automatonTargetHits(automaton, target, seedLen);
 
             if (numHits > 0) {
-                candidates[i].push_back(j);
+                (*candidates)[i].push_back(j);
             }
 
             printf("\n");
@@ -93,7 +93,7 @@ extern void automatonDeleteAutomata(void* automata, int automataLen) {
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     for (int i = 0; i < automataLen; ++i) {
         automatonDelete((*aut)[i]);
-  
+     }
 
     delete[] aut;
 }

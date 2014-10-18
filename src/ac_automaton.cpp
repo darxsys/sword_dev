@@ -12,6 +12,7 @@ using namespace std;
 #include "ac_node.h"
 #include "swsharp/swsharp.h"
 #include "database_hash.h"
+#include "timer.h"
 
 // ***************************************************************************
 // PUBLIC
@@ -47,6 +48,9 @@ static int seedCode(Chain* chain, int pos, int seedLen);
 
 // ***************************************************************************
 // PUBLIC
+static long long usecHits = 0;
+static long long tsec = 0;
+static long long hsec = 0;
 
 extern void* partialIndicesAutomatonCreate(Chain** database,
     int databaseStart, int databaseLen, void* automata,
@@ -54,6 +58,13 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     Candidates* candidates = new Candidates();
+
+    Timeval queryTimeval;
+    static long long usec = 0;
+
+    fprintf(stderr, "Num queries: %u\n", aut->size());
+
+    Timeval hits;
 
     for (int i = 0; i < aut->size(); ++i) {
 
@@ -64,7 +75,9 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
             Chain* target = database[j];
             // TODO: (querypos, targetpos, seedcode) 
             // newline for every (query, target)
+            timerStart(&hits);
             int numHits = automatonTargetHits(automaton, target, seedLen);
+            usecHits += timerStop(&hits);
 
             if (numHits > 0) {
                 queryCandidates.push_back(j);
@@ -75,6 +88,10 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
         (*candidates).push_back(queryCandidates);
     }
+
+    timerPrint("Hits", usecHits);
+    timerPrint("Transitions", tsec);
+    timerPrint("Hit count", hsec);    
 
     return candidates;
 }
@@ -103,14 +120,19 @@ extern void automatonDeleteAutomata(void* automata, int automataLen) {
 // ***************************************************************************
 // PRIVATE
 static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
+
     ACNode* state = automaton;
     int targetLen = chainGetLength(target);
 
     int numHits = 0;
 
+    Timeval transitions;
+    Timeval hits;
+
     for (int i = 0; i < targetLen; ++i) {
         char c = chainGetChar(target, i);
 
+        timerStart(&transitions);
         if (state->transitions.find(c) == state->transitions.end()) {
             while (state != automaton && 
                 state->transitions.find(c) == state->transitions.end()) {
@@ -124,7 +146,9 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         }
 
         state = state->transitions[c];
+        tsec += timerStop(&transitions);
 
+        timerStart(&hits);
         if (state->final) {
 
             // LOG
@@ -137,6 +161,8 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
             }
 
         }
+
+        hsec += timerStop(&hits);
     }
 
     // fprintf(stderr, "\n");

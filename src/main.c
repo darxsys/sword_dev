@@ -394,7 +394,13 @@ int main(int argc, char* argv[]) {
         if (!useAutomata) {
             databaseIndicesDelete(indices);
         } else {
+            // timerStop
+            Timeval timer;
+            timerStart(&timer);
             automatonDeleteAutomata(automata, queriesLen);
+            long long t = timerStop(&timer);
+
+            timerPrint("Deletion time", t);
         }
     }
 

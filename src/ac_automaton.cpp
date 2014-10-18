@@ -147,7 +147,9 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         // timerStart(&hits);
         if (state->final) {
             //TODO: this needs to be modified
-                numHits++;
+                for (unsigned int i = 0; i < state->positions.size(); ++i) {
+                    numHits++;
+                }
                 // int code = seedCode(target, i - seedLen + 1, seedLen);
                 // fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
         }
@@ -207,6 +209,7 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
     }
 
     q->final = 1;
+    q->positions.push_back(location);
 }
 
 static void automatonSetSupply(ACNode* root) {

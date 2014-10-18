@@ -130,31 +130,23 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
     Timeval hits;
 
     for (int i = 0; i < targetLen; ++i) {
-        char c = chainGetChar(target, i);
+        char c = toupper(chainGetChar(target, i));
 
         timerStart(&transitions);
-        if (state->transitions.find(c) == state->transitions.end()) {
-            while (state != automaton && 
-                state->transitions.find(c) == state->transitions.end()) {
-
-                state = state->sup;
-            }
-
-            if (state->transitions.find(c) == state->transitions.end()) {
-                continue;
-            }
+        while (!state->edge[c-'A']) {
+            state = state->fail;
         }
 
-        state = state->transitions[c];
+        if (state == automaton) {
+            continue;
+        }
+
+        state = state->transitions[c-'A'];
         tsec += timerStop(&transitions);
 
         timerStart(&hits);
         if (state->final) {
-
-            // LOG
-            list<int>::iterator it = state->wordLocations.begin();
-            
-            for (; it != state->wordLocations.end(); ++it) {
+            //TODO: this needs to be modified
                 numHits++;
                 // int code = seedCode(target, i - seedLen + 1, seedLen);
                 // fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
@@ -186,7 +178,7 @@ static ACNode* automatonCreate(int seedLen, Chain* query) {
     }
 
     // now find all the supply links
-    automatonSetSupply(root, query, queryLen);
+    automatonSetSupply(root);
 
     delete[] seed;
 
@@ -196,7 +188,7 @@ static ACNode* automatonCreate(int seedLen, Chain* query) {
 static void extractSeed(Chain* query, int pos, int len, char** output) {
     for (int i = pos; i < pos + len; ++i) {
 
-        (*output)[i-pos] = chainGetChar(query, i); 
+        (*output)[i-pos] = toupper(chainGetChar(query, i)); 
     }
 
     (*output)[len] = '\0';
@@ -208,59 +200,54 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
     ACNode* q = root;
 
     for (int i = 0; i < wordLen; ++i) {
-        if (q->transitions.count(word[i]) == 0) {
+        if (!q->edge[word[i] - 'A']) {
             // create new node
             ACNode* next = new ACNode();
-            q->transitions[word[i]] = next;
+            q->edge[word[i] - 'A'] = next;
             next->final = 0;
         }
 
-        q = q->transitions[word[i]];
+        q = q->edge[word[i] - 'A'];
     }
 
     q->final = 1;
-    q->wordLocations.push_back(location);
 }
 
-static void automatonSetSupply(ACNode* root, Chain* query, int queryLen) {
+static void automatonSetSupply(ACNode* root) {
     ACNode* q = root;
     root->sup = root;
 
     queue<ACNode*> nodeQ;
-    unordered_map<char, ACNode*>::iterator it = q->transitions.begin();
 
-    for (; it != q->transitions.end(); ++it) {
-        it->second->sup = root;
-        nodeQ.push(it->second);
+    for (int i = 0; i < 26; ++i) {
+        if (root->edge[i]) {
+            root->edge[i]->fail = root;
+            nodeQ.push(root->edge[i]);
+        } else {
+            root->edge[i] = root;
+        }
     }
 
     while (!nodeQ.empty()) {
         q = nodeQ.front();
         nodeQ.pop();
 
-        it = q->transitions.begin();
-        for (; it != q->transitions.end(); ++it) {
-            char letter = it->first;
-            ACNode* next = it->second;
+        for (int i = 0; i < 26; ++i) {
+            if (!q->edge[i]) {
+                continue;
+            }
 
+            ACNode* next = q->edge[i];
             nodeQ.push(next);
 
-            ACNode* v = q->sup;
-
-            while(v->transitions.count(letter) == 0 && v != root) {
-                v = v->sup;
+            ACNode* ft = q->fail;
+            while(!ft->edge[i]) {
+                ft = ft->fail;
             }
 
-            if (v->transitions.count(letter) == 0) {
-                next->sup = root;
-            } else {
-                next->sup = v->transitions[letter];
-            }
+            next->fail = ft;
 
-            next->wordLocations.splice(next->wordLocations.end(), 
-                v->wordLocations);
-
-            if (v->final) {
+            if (ft->final) {
                 next->final = 1;
             }
         }    
@@ -279,13 +266,11 @@ static void automatonDelete(ACNode* root) {
         ACNode* curr = nodeQ.front();
         nodeQ.pop();
 
-        unordered_map<char, ACNode*>::iterator it = curr->transitions.begin();
-        for(; it != curr->transitions.end(); ++it) {
-            nodeQ.push(it->second);
+        for(int i = 0; i < 26; ++i) {
+            if (curr->edge[i])
+                nodeQ.push(curr->edge[i]);
         }
 
-        curr->transitions.clear();
-        curr->wordLocations.clear();
         delete curr;
     }
 }

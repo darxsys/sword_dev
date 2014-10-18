@@ -35,7 +35,7 @@ static void extractSeed(Chain* query, int pos, int len, char** output);
 
 static void automatonAddWord(ACNode* root, char* word, int wordLen, 
     int location);
-static void automatonSetSupply(ACNode* root, Chain* query, int queryLen);
+static void automatonSetSupply(ACNode* root);
 
 static ACNode* automatonCreate(int seedLen, Chain* query);
 static void automatonDelete(ACNode* root);

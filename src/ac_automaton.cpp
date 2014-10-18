@@ -141,7 +141,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
             continue;
         }
 
-        state = state->transitions[c-'A'];
+        state = state->edge[c-'A'];
         tsec += timerStop(&transitions);
 
         timerStart(&hits);
@@ -150,8 +150,6 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
                 numHits++;
                 // int code = seedCode(target, i - seedLen + 1, seedLen);
                 // fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
-            }
-
         }
 
         hsec += timerStop(&hits);

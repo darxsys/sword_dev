@@ -18,7 +18,7 @@
 typedef struct AhoCorasick {
     int final;
     AhoCorasick* fail;
-    AhoCorasick* transitions[26];
+    AhoCorasick* edge[26];
 } ACNode;
 
 #endif // __AC_NODEHH__

@@ -213,7 +213,7 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
 
 static void automatonSetSupply(ACNode* root) {
     ACNode* q = root;
-    root->sup = root;
+    root->fail = root;
 
     queue<ACNode*> nodeQ;
 

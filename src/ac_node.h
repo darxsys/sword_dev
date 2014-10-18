@@ -19,6 +19,16 @@ typedef struct AhoCorasick {
     int final;
     AhoCorasick* fail;
     AhoCorasick* edge[26];
+
+    AhoCorasick() {
+        for (int i = 0; i < 26; ++i) {
+            edge[i] = NULL;
+
+        }
+        
+        final = 0;
+        fail = NULL;
+    }
 } ACNode;
 
 #endif // __AC_NODEHH__

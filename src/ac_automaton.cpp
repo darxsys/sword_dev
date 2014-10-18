@@ -75,9 +75,9 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
             Chain* target = database[j];
             // TODO: (querypos, targetpos, seedcode) 
             // newline for every (query, target)
-            timerStart(&hits);
+            // timerStart(&hits);
             int numHits = automatonTargetHits(automaton, target, seedLen);
-            usecHits += timerStop(&hits);
+            // usecHits += timerStop(&hits);
 
             if (numHits > 0) {
                 queryCandidates.push_back(j);
@@ -89,9 +89,9 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
         (*candidates).push_back(queryCandidates);
     }
 
-    timerPrint("Hits", usecHits);
-    timerPrint("Transitions", tsec);
-    timerPrint("Hit count", hsec);    
+    // timerPrint("Hits", usecHits);
+    // timerPrint("Transitions", tsec);
+    // timerPrint("Hit count", hsec);    
 
     return candidates;
 }
@@ -132,19 +132,19 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
     for (int i = 0; i < targetLen; ++i) {
         char c = toupper(chainGetChar(target, i));
 
-        timerStart(&transitions);
+        // timerStart(&transitions);
         while (!state->edge[c-'A']) {
             state = state->fail;
         }
 
-        if (state == automaton) {
+        if (state->edge[c-'A'] == state) {
             continue;
         }
 
         state = state->edge[c-'A'];
-        tsec += timerStop(&transitions);
+        // tsec += timerStop(&transitions);
 
-        timerStart(&hits);
+        // timerStart(&hits);
         if (state->final) {
             //TODO: this needs to be modified
                 numHits++;
@@ -152,7 +152,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
                 // fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
         }
 
-        hsec += timerStop(&hits);
+        // hsec += timerStop(&hits);
     }
 
     // fprintf(stderr, "\n");
@@ -162,7 +162,6 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
 
 static ACNode* automatonCreate(int seedLen, Chain* query) {
     ACNode* root = new ACNode();
-    root->final = 0;
 
     // first create a trie by sampling the query
     int queryLen = chainGetLength(query);
@@ -202,7 +201,6 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
             // create new node
             ACNode* next = new ACNode();
             q->edge[word[i] - 'A'] = next;
-            next->final = 0;
         }
 
         q = q->edge[word[i] - 'A'];
@@ -239,13 +237,13 @@ static void automatonSetSupply(ACNode* root) {
             nodeQ.push(next);
 
             ACNode* ft = q->fail;
-            while(!ft->edge[i]) {
+            while (!ft->edge[i]) {
                 ft = ft->fail;
             }
 
-            next->fail = ft;
+            next->fail = ft->edge[i];
 
-            if (ft->final) {
+            if (ft->edge[i]->final) {
                 next->final = 1;
             }
         }    
@@ -258,10 +256,17 @@ static void automatonSetSupply(ACNode* root) {
 static void automatonDelete(ACNode* root) {
     queue<ACNode*> nodeQ;
 
-    nodeQ.push(root);
+    for (int i = 0; i < 26; ++i) {
+        if (root->edge[i] && root->edge[i] != root) {
+            nodeQ.push(root->edge[i]);
+        }
+    }
+
 
     while (!nodeQ.empty()) {
         ACNode* curr = nodeQ.front();
+        // fprintf(stderr, "%p\n", curr);
+
         nodeQ.pop();
 
         for(int i = 0; i < 26; ++i) {
@@ -271,6 +276,8 @@ static void automatonDelete(ACNode* root) {
 
         delete curr;
     }
+
+    delete root;
 }
 
 //TODO: put this to some utils.c

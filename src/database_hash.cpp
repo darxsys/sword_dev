@@ -716,7 +716,7 @@ static void* scoreSequences(void* param) {
 
             for (j = 0; j < (*hash)[code].size(); j += 2) {
                 (*positions)[(*hash)[code][j]].push_back((*hash)[code][j + 1]);
-                // fprintf(stderr, "(%d, %d, %d)|", i, (*hash)[code][j + 1], code);
+                // fprintf(stderr, "%d %d %d\n", i, (*hash)[code][j + 1], code);
             }
 
             prevCode = code;

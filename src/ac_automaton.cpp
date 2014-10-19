@@ -146,18 +146,16 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
 
         // timerStart(&hits);
         if (state->final) {
-            //TODO: this needs to be modified
-                for (unsigned int i = 0; i < state->positions.size(); ++i) {
-                    numHits++;
-                }
-                // int code = seedCode(target, i - seedLen + 1, seedLen);
-                // fprintf(stderr, "(%d,%d,%d)|", *it, i - seedLen + 1, code);
+            // int code = seedCode(target, i - seedLen + 1, seedLen);
+            for (unsigned int j = 0; j < state->positions.size(); ++j) {
+                numHits++;
+                // fprintf(stderr, "%d %d %d\n", state->positions[j], i - seedLen + 1, code);
+            }
         }
 
         // hsec += timerStop(&hits);
     }
 
-    // fprintf(stderr, "\n");
     return numHits;
 }
 

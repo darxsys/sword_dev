@@ -37,20 +37,27 @@ using namespace std;
 //#define AA 20
 #define BUFFER 1024
 
-// halignment = (query_start, query_end, target_start, target_end, halignment_score, control)
+// halignment = (query_start, query_end, target_start, target_end, halignment_score)
 // candidate = (halignment_score, target_index)
-// code = (code, sequence_start)
+// code = (code, sequence_index)
 // max = (max_halignment_score, max_index)
 
 typedef unsigned short uint16;
-typedef tuple<uint16, uint16, uint16, uint16, int, char> HAlignment;
+// typedef tuple<uint16, uint16, uint16, uint16, int> HAlignment;
+typedef struct {
+    uint16 qstart;
+    uint16 qend;
+    uint16 tstart;
+    uint16 tend;
+    int score;
+} HAlignment;
 typedef tuple<int, int> Candidate;
 typedef tuple<int, uint16> Code, Maximum;
 
 typedef vector<vector<int> > Data;
 typedef vector<vector<Code> > Codes;
 typedef vector<vector<Candidate> > Candidates;
-typedef vector<map<int, HAlignment> > HAlignments;
+typedef vector<vector<HAlignment*> > HAlignments;
 typedef vector<Maximum> Maxima;
 
 typedef struct {
@@ -200,16 +207,16 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
     Data* hash = NULL;
     hashCreate(&hash, seedLen);
 
-    /* long long time_;
+    long long time_;
     Timeval scTimer;
-    timerStart(&scTimer); */
+    timerStart(&scTimer);
 
     int* seedCodes = NULL;
     int seedCodesLen = 0;
     seedCodesCreate(&seedCodes, &seedCodesLen, seedLen);
 
-    /* time_ = timerStop(&scTimer);
-    timerPrint("seedCodesCreate", time_); */
+    time_ = timerStop(&scTimer);
+    timerPrint("seedCodesCreate", time_);
 
     Candidates* candidates = NULL;
     candidatesCreate(&candidates, queriesLen);
@@ -217,8 +224,8 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
     Data* indices = NULL;
     dataCreate(&indices, queriesLen);
 
-    /* Timeval qcTimer;
-    timerStart(&qcTimer); */
+    Timeval qcTimer;
+    timerStart(&qcTimer);
 
     Data* seeds = NULL;
     seedsCreate(&seeds, seedCodes, seedCodesLen, seedLen, permute, scorer);
@@ -228,10 +235,10 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
 
     seedsDelete(seeds);
 
-    /* time_ = timerStop(&qcTimer);
-    timerPrint("queryCodesCreate", time_); */
+    time_ = timerStop(&qcTimer);
+    timerPrint("queryCodesCreate", time_);
 
-    int threadLen = 8;
+    int threadLen = 1;
     int threadTaskLen = queriesLen / threadLen;
 
     ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
@@ -246,8 +253,8 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
         maximaCreate(&alignMaxima[i], scoresLen);
     }
 
-    /* Timeval heTimer;
-    timerStart(&heTimer); */
+    Timeval heTimer;
+    timerStart(&heTimer);
 
     for (int i = 0; i < volumesLen; ++i) {
         if (progress) {
@@ -326,8 +333,8 @@ extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
     delete[] targetsLens;
     delete[] volumes;
 
-    /* time_ = timerStop(&heTimer);
-    timerPrint("heuristicPart", time_); */
+    time_ = timerStop(&heTimer);
+    timerPrint("heuristicPart", time_);
 
     return static_cast<void*>(indices);
 }
@@ -339,7 +346,7 @@ extern void databaseIndicesDelete(void* indices_) {
 
 extern int* filteredDatabaseCreate(Chain*** filteredDatabase,
     int* filteredDatabaseLen, void* indices_, int queryIdx,
-    Chain** database, int databaseLen,  int returnUsed) {
+    Chain** database, int databaseLen, int returnUsed) {
 
     Data* indices = static_cast<Data*>(indices_);
 
@@ -596,16 +603,16 @@ static void candidatesDelete(Candidates* candidates) {
 }
 
 static void hAlignmentsCreate(HAlignments** alignments, int len) {
-    map<int, HAlignment> mia;
-    (*alignments) = new HAlignments(len, mia);
+    vector<HAlignment*> vap;
+    (*alignments) = new HAlignments(len, vap);
 }
 
 static void hAlignmentScore(HAlignment* alignment, Chain* query, Chain* target,
     Scorer* scorer) {
 
-    uint16 qstart = get<0>(*alignment);
-    uint16 tstart = get<2>(*alignment);
-    uint16 hAlignmentLen = get<1>(*alignment) - get<0>(*alignment) + 1;
+    uint16 qstart = (*alignment).qstart;
+    uint16 tstart = (*alignment).tstart;
+    uint16 hAlignmentLen = (*alignment).qend - (*alignment).qstart + 1;
 
     int score = 0;
 
@@ -615,14 +622,14 @@ static void hAlignmentScore(HAlignment* alignment, Chain* query, Chain* target,
             scorerEncode(chainGetChar(target, tstart + i)));
     }
 
-    get<4>(*alignment) = score;
+    (*alignment).score = score;
 }
 
 static void hAlignmentExtendLeft(HAlignment* alignment, Chain* query, Chain* target,
    uint16 extendLen, Scorer* scorer) {
 
-    uint16 qstart = get<0>(*alignment);
-    uint16 tstart = get<2>(*alignment);
+    uint16 qstart = (*alignment).qstart;
+    uint16 tstart = (*alignment).tstart;
 
     uint16 maxExtendLen = MIN(qstart, tstart);
     extendLen = MIN(extendLen, maxExtendLen);
@@ -640,8 +647,8 @@ static void hAlignmentExtendLeft(HAlignment* alignment, Chain* query, Chain* tar
             score += substScore;
         }
 
-        get<0>(*alignment) -= (i - 1);
-        get<2>(*alignment) -= (i - 1);
+        (*alignment).qstart -= (i - 1);
+        (*alignment).tstart -= (i - 1);
 
     } else {
         for (uint16 i = 1; i < extendLen + 1; ++i) {
@@ -650,18 +657,18 @@ static void hAlignmentExtendLeft(HAlignment* alignment, Chain* query, Chain* tar
                scorerEncode(chainGetChar(target, tstart - i)));
         }
 
-        get<0>(*alignment) -= extendLen;
-        get<2>(*alignment) -= extendLen;
+        (*alignment).qstart -= extendLen;
+        (*alignment).tstart -= extendLen;
     }
 
-    get<4>(*alignment) += score;
+    (*alignment).score += score;
 }
 
 static void hAlignmentExtendRight(HAlignment* alignment, Chain* query, Chain* target,
     uint16 extendLen, Scorer* scorer) {
 
-    uint16 qend = get<1>(*alignment);
-    uint16 tend = get<3>(*alignment);
+    uint16 qend = (*alignment).qend;
+    uint16 tend = (*alignment).tend;
 
     uint16 maxExtendLen = MIN(
         chainGetLength(query) - qend - 1,
@@ -682,8 +689,8 @@ static void hAlignmentExtendRight(HAlignment* alignment, Chain* query, Chain* ta
             score += substScore;
         }
 
-        get<1>(*alignment) += (i - 1);
-        get<3>(*alignment) += (i - 1);
+        (*alignment).qend += (i - 1);
+        (*alignment).tend += (i - 1);
 
     } else {
         for (i = 1; i < extendLen + 1; ++i) {
@@ -692,17 +699,17 @@ static void hAlignmentExtendRight(HAlignment* alignment, Chain* query, Chain* ta
                 scorerEncode(chainGetChar(target, tend + i)));
         }
 
-        get<1>(*alignment) += extendLen;
-        get<3>(*alignment) += extendLen;
+        (*alignment).qend += extendLen;
+        (*alignment).tend += extendLen;
     }
 
-    get<4>(*alignment) += score;
+    (*alignment).score += score;
 }
 
 static void hAlignmentsDelete(HAlignments* alignments) {
     for (unsigned int i = 0; i < alignments->size(); ++i) {
         if ((*alignments)[i].size() > 0) {
-            map<int, HAlignment>().swap((*alignments)[i]);
+            vector<HAlignment*>().swap((*alignments)[i]);
         }
     }
     alignments->clear();
@@ -832,23 +839,24 @@ static void* scoreSequences(void* param) {
 
     // ************
 
-    /* Timeval lisTimer, sortTimer, swapTimer, hashTimer, extractTimer, indicesTimer;
+    Timeval lisTimer, sortTimer, swapTimer, hashTimer, extractTimer, indicesTimer,
+        alocationTimer, extendTimer;
     long long lisTotal = 0, sortTotal = 0, swapTotal = 0, hashTotal = 0,
-        extractTotal = 0, indicesTotal = 0; */
+        extractTotal = 0, indicesTotal = 0, alocationTotal = 0, extendTotal = 0;
 
     // ************
 
     int queryIdx, qstart, targetIdx, tstart;
     int d, dLen, extendLen;
 
-    HAlignment al;
+    HAlignment* hap;
     Maximum m;
 
-    int* dLens = new int[databaseLen];
+    // int* dLens = new int[databaseLen];
 
     for (queryIdx = taskStart; queryIdx < taskEnd; ++queryIdx) {
 
-        // int queryLen = chainGetLength(queries[queryIdx]);
+        int queryLen = chainGetLength(queries[queryIdx]);
 
         // (*candidates)[queryIdx].reserve(
         //    (*candidates)[queryIdx].size() + positions->size());
@@ -858,19 +866,23 @@ static void* scoreSequences(void* param) {
         int min = (*candidates)[queryIdx].size() == maxCandidates ?
             get<0>((*candidates)[queryIdx][maxCandidates - 1]) : 100000000;
 
+        timerStart(&alocationTimer);
+
         (*alignMaxima).assign(databaseLen, m);
 
-        /* for (i = 0; i < static_cast<unsigned int>(databaseLen); ++i) {
-            (*alignments)[i].assign(queryLen - 2 * seedLen + 1 + 
-                + chainGetLength(database[databaseStart + i]), al);
-        } */
-
         for (i = 0; i < static_cast<unsigned int>(databaseLen); ++i) {
-            dLens[i] = chainGetLength(database[databaseStart + i]) +
-                chainGetLength(queries[queryIdx]) - 2 * seedLen + 1;
+            (*alignments)[i].assign(queryLen - 2 * seedLen + 1 +
+                chainGetLength(database[databaseStart + i]), NULL);
         }
 
-        // timerStart(&hashTimer);
+        alocationTotal += timerStop(&alocationTimer);
+
+        /*for (i = 0; i < static_cast<unsigned int>(databaseLen); ++i) {
+            dLens[i] = chainGetLength(database[databaseStart + i]) +
+                chainGetLength(queries[queryIdx]) - 2 * seedLen + 1;
+        }*/
+
+        timerStart(&hashTimer);
 
         for (i = 0; i < (*queryCodes)[queryIdx].size(); ++i) {
 
@@ -884,46 +896,48 @@ static void* scoreSequences(void* param) {
                 targetIdx = (*hash)[code][j];
                 tstart = (*hash)[code][j + 1];
 
-                // dLen = (*alignments)[targetIdx].size();
-                dLen = dLens[targetIdx];
+                dLen = (*alignments)[targetIdx].size();
+                // dLen = dLens[targetIdx];
                 d = ((tstart - qstart + dLen) % dLen);
 
-                if (get<5>((*alignments)[targetIdx][d]) == 1) {
+                hap = (*alignments)[targetIdx][d];
 
-                    if ((qstart - get<1>((*alignments)[targetIdx][d])) < A &&
-                        (qstart - get<1>((*alignments)[targetIdx][d])) > -1 * seedLen) { // 2nd statement maybe not needed
+                if (hap != NULL) {
 
-                        extendLen = qstart + seedLen - get<1>((*alignments)[targetIdx][d]) - 1;
+                    if ((qstart - (*hap).qend < A) && (qstart - (*hap).qend > -1 * seedLen)) {
+                        // 2nd statement maybe not needed
 
-                        hAlignmentExtendRight(&(*alignments)[targetIdx][d], queries[queryIdx],
-                            database[targetIdx], extendLen, scorer);
+                        extendLen = qstart + seedLen - (*hap).qend - 1;
+
+                        hAlignmentExtendRight(hap, queries[queryIdx], database[targetIdx],
+                            extendLen, scorer);
 
                     } else {
-                        if (get<1>((*alignments)[targetIdx][d]) - 
-                            get<0>((*alignments)[targetIdx][d]) > 2 * seedLen + 1) continue;
+                        if ((*hap).qend - (*hap).qstart > 2 * seedLen) continue;
 
                         // printf("Updating\n");
+                        // continue;
 
-                        get<0>((*alignments)[targetIdx][d]) = qstart;
-                        get<1>((*alignments)[targetIdx][d]) = qstart + seedLen - 1;
-                        get<2>((*alignments)[targetIdx][d]) = tstart;
-                        get<3>((*alignments)[targetIdx][d]) = tstart + seedLen - 1;
-                        hAlignmentScore(&(*alignments)[targetIdx][d], queries[queryIdx],
-                            database[targetIdx], scorer);
+                        (*hap).qstart = qstart;
+                        (*hap).qend = qstart + seedLen - 1;
+                        (*hap).tstart = tstart;
+                        (*hap).tend = tstart + seedLen - 1;
+                        hAlignmentScore(hap, queries[queryIdx], database[targetIdx], scorer);
                     }
 
                 } else {
-                    get<0>((*alignments)[targetIdx][d]) = qstart;
-                    get<1>((*alignments)[targetIdx][d]) = qstart + seedLen - 1;
-                    get<2>((*alignments)[targetIdx][d]) = tstart;
-                    get<3>((*alignments)[targetIdx][d]) = tstart + seedLen - 1;
-                    get<5>((*alignments)[targetIdx][d]) = 1;
-                    hAlignmentScore(&(*alignments)[targetIdx][d], queries[queryIdx],
-                        database[targetIdx], scorer);
+                    (*alignments)[targetIdx][d] = new HAlignment();
+                    hap = (*alignments)[targetIdx][d];
+
+                    (*hap).qstart = qstart;
+                    (*hap).qend = qstart + seedLen - 1;
+                    (*hap).tstart = tstart;
+                    (*hap).tend = tstart + seedLen - 1;
+                    hAlignmentScore(hap, queries[queryIdx], database[targetIdx], scorer);
                 }
 
-                if (get<0>((*alignMaxima)[targetIdx]) < get<4>((*alignments)[targetIdx][d])) {
-                    get<0>((*alignMaxima)[targetIdx]) = get<4>((*alignments)[targetIdx][d]);
+                if (get<0>((*alignMaxima)[targetIdx]) < (*hap).score) {
+                    get<0>((*alignMaxima)[targetIdx]) = (*hap).score;
                     get<1>((*alignMaxima)[targetIdx]) = d;
                 }
             }
@@ -931,46 +945,55 @@ static void* scoreSequences(void* param) {
             prevCode = code;
         }
 
-        /* hashTotal += timerStop(&hashTimer);
-        timerStart(&lisTimer); */
+        hashTotal += timerStop(&hashTimer);
+        timerStart(&lisTimer);
 
         for (targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
 
             d = get<1>((*alignMaxima)[targetIdx]);
+            hap = (*alignments)[targetIdx][d];
 
-            if (get<0>((*alignments)[targetIdx][d]) == 
-                get<1>((*alignments)[targetIdx][d])) continue;
+            if (hap == NULL) continue;
 
-            hAlignmentExtendLeft(&(*alignments)[targetIdx][d], queries[queryIdx],
-                database[targetIdx], 0, scorer);
+            timerStart(&extendTimer);
 
-            hAlignmentExtendRight(&(*alignments)[targetIdx][d], queries[queryIdx],
-                database[targetIdx], 0, scorer);
+            hAlignmentExtendLeft(hap, queries[queryIdx], database[targetIdx], 0, scorer);
 
-            score = get<4>((*alignments)[targetIdx][d]);
-            
+            hAlignmentExtendRight(hap, queries[queryIdx], database[targetIdx], 0, scorer);
+
+            extendTotal += timerStop(&extendTimer);
+
+            score = (*hap).score;
+
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
                 (*candidates)[queryIdx].push_back(make_tuple(score, databaseStart + targetIdx));
 
                 min = score < min ? score : min;
             }
 
-            (*alignments)[targetIdx].clear();
+            for (int i = 0; i < (*alignments)[targetIdx].size(); ++i) {
+                if ((*alignments)[targetIdx][i] != NULL) {
+                    delete (*alignments)[targetIdx][i];
+                    (*alignments)[targetIdx][i] = NULL;
+                }
+            }
+
+            // (*alignments)[targetIdx].clear();
         }
 
-        // lisTotal += timerStop(&lisTimer);
+        lisTotal += timerStop(&lisTimer);
 
         if ((*candidates)[queryIdx].size() > maxCandidates) {
 
-            // timerStart(&sortTimer);
+            timerStart(&sortTimer);
 
             stable_sort(
                 (*candidates)[queryIdx].begin(),
                 (*candidates)[queryIdx].end(),
                 sort_by_score());
 
-            /* sortTotal += timerStop(&sortTimer);
-            timerStart(&swapTimer); */
+            sortTotal += timerStop(&sortTimer);
+            timerStart(&swapTimer);
 
             candidatesLen = MIN(maxCandidates, (*candidates)[queryIdx].size());
 
@@ -980,12 +1003,12 @@ static void* scoreSequences(void* param) {
 
             (*candidates)[queryIdx].swap(temp);
 
-            // swapTotal += timerStop(&swapTimer);
+            swapTotal += timerStop(&swapTimer);
         }
 
         if (extractIndices) {
 
-            // timerStart(&extractTimer);
+            timerStart(&extractTimer);
 
             (*indices)[queryIdx].reserve((*candidates)[queryIdx].size());
 
@@ -993,36 +1016,38 @@ static void* scoreSequences(void* param) {
                 (*indices)[queryIdx].push_back(get<1>((*candidates)[queryIdx][i]));
 
                 // fprintf(stderr, "(%d: %d)\n", get<1>((*candidates)[queryIdx][i]),
-                //    get<0>((*candidates)[queryIdx][i])); 
+                //    get<0>((*candidates)[queryIdx][i]));
             }
 
             vector<Candidate>().swap((*candidates)[queryIdx]);
 
-            /* extractTotal += timerStop(&extractTimer);
-            timerStart(&indicesTimer); */
+            extractTotal += timerStop(&extractTimer);
+            timerStart(&indicesTimer);
 
             if ((*indices)[queryIdx].size() == maxCandidates) {
                 sort((*indices)[queryIdx].begin(), (*indices)[queryIdx].end());
             }
 
-            // indicesTotal += timerStop(&indicesTimer);
+            indicesTotal += timerStop(&indicesTimer);
         }
     }
 
-    delete[] dLens;
+    // delete[] dLens;
 
     delete threadData;
 
-    /* if (taskStart == 0 && taskEnd != 0) {
+    if (taskStart == 0 && taskEnd != 0) {
+        timerPrint("alocationTime", alocationTotal);
         timerPrint("hashTime", hashTotal);
         timerPrint("lisTime", lisTotal);
+        timerPrint("extendTime", extendTotal);
         timerPrint("sortTime", sortTotal);
         timerPrint("swapTime", swapTotal);
         if (extractIndices) {
             timerPrint("extractIndicesTime", extractTotal);
             timerPrint("sortIndicesTime", indicesTotal);
         }
-    } */
+    }
 
     return NULL;
 }

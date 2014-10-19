@@ -234,9 +234,9 @@ int main(int argc, char* argv[]) {
 
     deleteFastaChains(database, databaseLen);
 
-    /* Timeval swTimer, dbTimer;
+    Timeval swTimer, dbTimer;
     long long dbTotal = 0, swTotal = 0;
-    timerStart(&swTimer); */
+    timerStart(&swTimer);
 
     if (indices != NULL) {
 
@@ -284,12 +284,12 @@ int main(int argc, char* argv[]) {
 
             for (i = 0; i < queriesLen; ++i) {
 
-                // timerStart(&dbTimer);
+                timerStart(&dbTimer);
 
                 usedIndices = filteredDatabaseCreate(&filteredDatabase,
                     &filteredDatabaseLen, indices, i, database, databaseLen,  1);
 
-                // dbTotal += timerStop(&dbTimer);
+                dbTotal += timerStop(&dbTimer);
 
                 if (filteredDatabaseLen == 0) {
                     dbAlignmentsPart[i] = NULL;
@@ -304,7 +304,7 @@ int main(int argc, char* argv[]) {
                     chainDatabase, scorer, maxAlignments, valueFunction, (void*) eValueParams,
                     maxEValue, NULL, 0, cards, cardsLen, NULL);
 
-                // timerStart(&dbTimer);
+                timerStart(&dbTimer);
 
                 if (usedIndices != NULL) {
                     for (j = 0; j < dbAlignmentsPartLens[i]; ++j) {
@@ -318,7 +318,7 @@ int main(int argc, char* argv[]) {
                     free(usedIndices);
                 }
 
-                // dbTotal += timerStop(&dbTimer);
+                dbTotal += timerStop(&dbTimer);
 
                 chainDatabaseDelete(chainDatabase);
 
@@ -362,9 +362,9 @@ int main(int argc, char* argv[]) {
         databaseIndicesDelete(indices);
     }
 
-    /* swTotal = timerStop(&swTimer);
+    swTotal = timerStop(&swTimer);
     timerPrint("hdbPart", dbTotal);
-    timerPrint("swPart", swTotal); */
+    timerPrint("swPart", swTotal);
 
     scorerDelete(scorer);
 

@@ -233,8 +233,14 @@ int main(int argc, char* argv[]) {
     void* indices = NULL;
 
     if (!useAutomata) {
+        Timeval timer;
+        timerStart(&timer);
+
         indices = databaseIndicesCreate(databasePath, queries, queriesLen,
             seedLen, maxCandidates, progress, permute, scorer, aaScore);
+
+        long long usec = timerStop(&timer);
+        timerPrint("Hash creation", usec);
     }
 
     /* Timeval swTimer, dbTimer;
@@ -279,7 +285,7 @@ int main(int argc, char* argv[]) {
         }
 
         Timeval automataTimer;
-        long long automataTime;
+        long long automataTime = 0;
 
         while (1) {
 
@@ -306,8 +312,7 @@ int main(int argc, char* argv[]) {
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
 
-                automataTime = timerStop(&automataTimer);
-                timerPrint("Automaton test took", automataTime);
+                automataTime += timerStop(&automataTimer);
             }
 
             for (i = 0; i < queriesLen; ++i) {
@@ -394,6 +399,8 @@ int main(int argc, char* argv[]) {
         if (!useAutomata) {
             databaseIndicesDelete(indices);
         } else {
+            timerPrint("Automaton test took", automataTime);
+            
             // timerStop
             Timeval timer;
             timerStart(&timer);

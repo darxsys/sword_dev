@@ -1,4 +1,5 @@
 Automat:
 
-Vidjeti trebam li uopce postavljati fail link onako ili je ustvari za svaki pokusaj fail link root?
+1) add threading support
+2) think and add some ways of generating permutations
 

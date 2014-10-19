@@ -840,10 +840,12 @@ static void* scoreSequences(void* param) {
     // ************
 
     Timeval lisTimer, sortTimer, swapTimer, hashTimer, extractTimer, indicesTimer,
-        alocationTimer, extendTimer, pbackTimer, deleteTimer;
+        alocationTimer, extendTimer, pbackTimer, deleteTimer, hextendTimer,
+        hreplaceTimer, hcreateTimer, hmaximaTimer;
     long long lisTotal = 0, sortTotal = 0, swapTotal = 0, hashTotal = 0,
         extractTotal = 0, indicesTotal = 0, alocationTotal = 0, extendTotal = 0,
-        deleteTotal = 0, pbackTotal = 0;
+        deleteTotal = 0, pbackTotal = 0, hextendTotal = 0, hreplaceTotal = 0,
+        hcreateTotal = 0, hmaximaTotal = 0;
 
     // ************
 
@@ -867,6 +869,8 @@ static void* scoreSequences(void* param) {
         int min = (*candidates)[queryIdx].size() == maxCandidates ?
             get<0>((*candidates)[queryIdx][maxCandidates - 1]) : 100000000;
 
+        timerStart(&hashTimer);
+
         timerStart(&alocationTimer);
 
         (*alignMaxima).assign(databaseLen, m);
@@ -882,8 +886,6 @@ static void* scoreSequences(void* param) {
             dLens[i] = chainGetLength(database[databaseStart + i]) +
                 chainGetLength(queries[queryIdx]) - 2 * seedLen + 1;
         }*/
-
-        timerStart(&hashTimer);
 
         for (i = 0; i < (*queryCodes)[queryIdx].size(); ++i) {
 
@@ -908,10 +910,14 @@ static void* scoreSequences(void* param) {
                     if ((qstart - (*hap).qend < A) && (qstart - (*hap).qend > -1 * seedLen)) {
                         // 2nd statement maybe not needed
 
+                        timerStart(&hextendTimer);
+
                         extendLen = qstart + seedLen - (*hap).qend - 1;
 
                         hAlignmentExtendRight(hap, queries[queryIdx], database[targetIdx],
                             extendLen, scorer);
+
+                        hextendTotal += timerStop(&hextendTimer);
 
                     } else {
                         if ((*hap).qend - (*hap).qstart > 2 * seedLen) continue;
@@ -919,14 +925,20 @@ static void* scoreSequences(void* param) {
                         // printf("Updating\n");
                         // continue;
 
+                        timerStart(&hreplaceTimer);
+
                         (*hap).qstart = qstart;
                         (*hap).qend = qstart + seedLen - 1;
                         (*hap).tstart = tstart;
                         (*hap).tend = tstart + seedLen - 1;
                         hAlignmentScore(hap, queries[queryIdx], database[targetIdx], scorer);
+
+                        hreplaceTotal += timerStop(&hreplaceTimer);
                     }
 
                 } else {
+                    timerStart(&hcreateTimer);
+
                     (*alignments)[targetIdx][d] = new HAlignment();
                     hap = (*alignments)[targetIdx][d];
 
@@ -935,12 +947,18 @@ static void* scoreSequences(void* param) {
                     (*hap).tstart = tstart;
                     (*hap).tend = tstart + seedLen - 1;
                     hAlignmentScore(hap, queries[queryIdx], database[targetIdx], scorer);
+
+                    hcreateTotal += timerStop(&hcreateTimer);
                 }
+
+                timerStart(&hmaximaTimer);
 
                 if (get<0>((*alignMaxima)[targetIdx]) < (*hap).score) {
                     get<0>((*alignMaxima)[targetIdx]) = (*hap).score;
                     get<1>((*alignMaxima)[targetIdx]) = d;
                 }
+
+                hmaximaTotal += timerStop(&hmaximaTimer);
             }
 
             prevCode = code;
@@ -978,7 +996,7 @@ static void* scoreSequences(void* param) {
 
             timerStart(&deleteTimer);
 
-            for (int i = 0; i < (*alignments)[targetIdx].size(); ++i) {
+            for (i = 0; i < (*alignments)[targetIdx].size(); ++i) {
                 if ((*alignments)[targetIdx][i] != NULL) {
                     delete (*alignments)[targetIdx][i];
                     (*alignments)[targetIdx][i] = NULL;
@@ -1047,11 +1065,15 @@ static void* scoreSequences(void* param) {
 
     if (taskStart == 0 && taskEnd != 0) {
         timerPrint("hashTime", hashTotal);
-        timerPrint(" alocationTime", alocationTotal);
+        timerPrint("-alocationTime", alocationTotal);
+        timerPrint("-hextendTime", hextendTotal);
+        timerPrint("-hreplaceTime", hreplaceTotal);
+        timerPrint("-hcreateTime", hcreateTotal);
+        timerPrint("-hmaximaTime", hmaximaTotal);
         timerPrint("lisTime", lisTotal);
-        timerPrint(" extendTime", extendTotal);
-        timerPrint(" pushBackTime",pbackTotal);
-        timerPrint(" deleteionTime", deleteTotal);
+        timerPrint("-extendTime", extendTotal);
+        timerPrint("-pushBackTime", pbackTotal);
+        timerPrint("-deleteionTime", deleteTotal);
         timerPrint("sortTime", sortTotal);
         timerPrint("swapTime", swapTotal);
         if (extractIndices) {

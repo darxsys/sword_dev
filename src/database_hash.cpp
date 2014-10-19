@@ -840,9 +840,10 @@ static void* scoreSequences(void* param) {
     // ************
 
     Timeval lisTimer, sortTimer, swapTimer, hashTimer, extractTimer, indicesTimer,
-        alocationTimer, extendTimer;
+        alocationTimer, extendTimer, pbackTimer, deleteTimer;
     long long lisTotal = 0, sortTotal = 0, swapTotal = 0, hashTotal = 0,
-        extractTotal = 0, indicesTotal = 0, alocationTotal = 0, extendTotal = 0;
+        extractTotal = 0, indicesTotal = 0, alocationTotal = 0, extendTotal = 0,
+        deleteTotal = 0, pbackTotal = 0;
 
     // ************
 
@@ -963,6 +964,8 @@ static void* scoreSequences(void* param) {
 
             extendTotal += timerStop(&extendTimer);
 
+            timerStart(&pbackTimer);
+
             score = (*hap).score;
 
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
@@ -971,12 +974,18 @@ static void* scoreSequences(void* param) {
                 min = score < min ? score : min;
             }
 
+            pbackTotal += timerStop(&pbackTimer);
+
+            timerStart(&deleteTimer);
+
             for (int i = 0; i < (*alignments)[targetIdx].size(); ++i) {
                 if ((*alignments)[targetIdx][i] != NULL) {
                     delete (*alignments)[targetIdx][i];
                     (*alignments)[targetIdx][i] = NULL;
                 }
             }
+
+            deleteTotal += timerStop(&deleteTimer);
 
             // (*alignments)[targetIdx].clear();
         }
@@ -1037,10 +1046,12 @@ static void* scoreSequences(void* param) {
     delete threadData;
 
     if (taskStart == 0 && taskEnd != 0) {
-        timerPrint("alocationTime", alocationTotal);
         timerPrint("hashTime", hashTotal);
+        timerPrint(" alocationTime", alocationTotal);
         timerPrint("lisTime", lisTotal);
-        timerPrint("extendTime", extendTotal);
+        timerPrint(" extendTime", extendTotal);
+        timerPrint(" pushBackTime",pbackTotal);
+        timerPrint(" deleteionTime", deleteTotal);
         timerPrint("sortTime", sortTotal);
         timerPrint("swapTime", swapTotal);
         if (extractIndices) {

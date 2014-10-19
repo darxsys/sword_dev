@@ -1,0 +1,4 @@
+Automat:
+
+Vidjeti trebam li uopce postavljati fail link onako ili je ustvari za svaki pokusaj fail link root?
+

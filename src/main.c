@@ -25,6 +25,7 @@ Contact the swsharp author by mkorpar@gmail.com.
 #include <stdlib.h>
 #include <string.h>
 
+#include "ac_automaton.h"
 #include "database_hash.h"
 #include "timer.h"
 #include "swsharp/evalue.h"
@@ -66,7 +67,6 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
-    {"progress", no_argument, 0, 'r'},
     {"permute", no_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
@@ -124,7 +124,6 @@ int main(int argc, char* argv[]) {
     int seedLen = 5;
     int maxCandidates = 5000;
 
-    int progress = 0;
     int permute = 0;
     int aaScore = 0;
 
@@ -182,9 +181,6 @@ int main(int argc, char* argv[]) {
         case 'd':
             maxCandidates = atoi(optarg);
             break;
-        case 'r':
-            progress = 1;
-            break;
         case 'p':
             permute = 1;
             break;
@@ -219,6 +215,10 @@ int main(int argc, char* argv[]) {
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
 
+    void* automata = NULL;
+    int automataLen = queriesLen;
+    automata = automatonCreateAutomata(seedLen, queries, queriesLen);
+
     Chain** database = NULL;
     int databaseLen = 0;
     int databaseStart = 0;
@@ -229,8 +229,8 @@ int main(int argc, char* argv[]) {
     Scorer* scorer;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
 
-    void* indices = databaseIndicesCreate(databasePath, queries, queriesLen,
-        database, seedLen, maxCandidates, progress, permute, scorer, aaScore);
+    void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
+        automata, automataLen, seedLen, maxCandidates, scorer);
 
     deleteFastaChains(database, databaseLen);
 
@@ -372,6 +372,8 @@ int main(int argc, char* argv[]) {
 
     deleteFastaChains(queries, queriesLen);
 
+    automatonDeleteAutomata(automata, automataLen);
+
     free(cards);
 
     return 0;
@@ -493,8 +495,6 @@ static void help() {
     "    -p, --permute <int>\n"
     "        permuting each seed position if the substitution score is greater\n"
     "        than input value\n"
-    "    --progress\n"
-    "        prints out the program progression\n"
     "    -h, -help\n"
     "        prints out the help\n");
 }

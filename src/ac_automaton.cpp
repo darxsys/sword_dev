@@ -162,6 +162,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
 
 static ACNode* automatonCreate(int seedLen, Chain* query) {
     ACNode* root = new ACNode();
+    root->final = 0;
 
     // first create a trie by sampling the query
     int queryLen = chainGetLength(query);
@@ -201,6 +202,8 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
             // create new node
             ACNode* next = new ACNode();
             q->edge[word[i] - 'A'] = next;
+
+            root->final++;
         }
 
         q = q->edge[word[i] - 'A'];

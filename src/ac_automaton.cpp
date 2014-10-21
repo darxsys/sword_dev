@@ -145,7 +145,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         // tsec += timerStop(&transitions);
 
         // timerStart(&hits);
-        if (state->final) {
+        if (state->size) {
             // int code = seedCode(target, i - seedLen + 1, seedLen);
             for (unsigned int j = 0; j < state->positions.size(); ++j) {
                 numHits++;
@@ -162,7 +162,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
 
 static ACNode* automatonCreate(int seedLen, Chain* query) {
     ACNode* root = new ACNode();
-    root->final = 0;
+    root->size = 0;
 
     // first create a trie by sampling the query
     int queryLen = chainGetLength(query);
@@ -203,13 +203,13 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
             ACNode* next = new ACNode();
             q->edge[word[i] - 'A'] = next;
 
-            root->final++;
+            root->size++;
         }
 
         q = q->edge[word[i] - 'A'];
     }
 
-    q->final = 1;
+    q->size = 1;
     q->positions.push_back(location);
 }
 
@@ -247,8 +247,8 @@ static void automatonSetSupply(ACNode* root) {
 
             next->fail = ft->edge[i];
 
-            if (ft->edge[i]->final) {
-                next->final = 1;
+            if (ft->edge[i]->size) {
+                next->size = 1;
             }
         }    
     }

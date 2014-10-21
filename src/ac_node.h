@@ -18,7 +18,7 @@
 typedef unsigned short uint16;
 
 typedef struct AhoCorasick {
-    int final;
+    int size;
     AhoCorasick* fail;
     AhoCorasick* edge[26];
     vector<uint16> positions;

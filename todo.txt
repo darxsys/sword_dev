@@ -1,0 +1,5 @@
+Automat:
+
+1) add threading support
+2) think and add some ways of generating permutations
+

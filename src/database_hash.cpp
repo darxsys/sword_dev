@@ -476,7 +476,7 @@ static void* scoreSequences(void* param) {
 
                 state = state->edge[c];
 
-                if (state->final) {
+                if (state->positions.size() > 0) {
                     for (i = 0; i < state->positions.size(); ++i) {
                         qstart = state->positions[i];
                         tstart = k - seedLen + 1;

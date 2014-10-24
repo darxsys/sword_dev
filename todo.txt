@@ -1,5 +1,18 @@
-Automat:
+Table automaton:
 
-1) add threading support
-2) think and add some ways of generating permutations
+1) Creation of the table could be problematic. How to correctly allocate table size? Is that even possible?
+Maybe reallocation to double the current size and then reallocation to the final size if
+the allocated part ends up being bigger? Is this really amortized O(1)? Can we go faster?
+
+Well, worst case is to allocate queryLen - seedLen + 1 states and then just reallocate in the end to the
+real size? Maybe this is the best. This will waste a lot of memory during the process, maybe not even be
+possible for huge strings. 
+
+2) Functions:
+Create table();
+Delete table(table);
+Access transition(i, j);
+
+
+
 

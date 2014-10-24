@@ -8,9 +8,9 @@
 
 using namespace std;
 
+#include "swsharp/swsharp.h"
 #include "ac_automaton.h"
 #include "ac_node.h"
-#include "swsharp/swsharp.h"
 #include "database_hash.h"
 #include "timer.h"
 

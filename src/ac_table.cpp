@@ -11,7 +11,8 @@ using namespace std;
 #include "swsharp/swsharp.h"
 #include "table_node.h"
 
-const int TABLE_WIDTH = 27;
+// one additional for a fail link
+const int TABLE_WIDTH = 27 + 1;
 
 // ***************************************************************************
 // PUBLIC
@@ -26,10 +27,12 @@ extern void automatonDeleteTables(void* automata, int automataLen);
 static TabNode* automatonCreateTable(int seedLen, Chain* query);
 static void automatonAddWordTable(TabNode* automaton, char* word, 
     int location);
+static void automatonSetSupplyTable(TabNode* automaton); 
 
 static void automatonDeleteTable(TabNode* automaton);
 
-static inline void coordinates(int i, int j, int numCols);
+static inline int coordinates(int i, int j, int numCols);
+
 // ***************************************************************************
 
 // ***************************************************************************
@@ -71,12 +74,14 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
 
     // worst case scenario
     // could be dangerous
-    TabNode->table = new int[queryLen * TABLE_WIDTH];
+    // extra column for fail link
+    automaton->table = (int*) malloc(sizeof(int) * queryLen * 
+        (TABLE_WIDTH) * seedLen);
 
    //TODO: put memset here
     for (int i = 0; i < queryLen; ++i) {
-        for (int j = 0; j < TABLE_WIDTH; ++j) {
-            TabNode->table[coordinates(i, j, TABLE_WIDTH)] = 0;
+        for (int j = 0; j < TABLE_WIDTH+1; ++j) {
+            automaton->table[coordinates(i, j, TABLE_WIDTH)] = 0;
         }
     }
 
@@ -89,6 +94,12 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
     // TODO:
     // deallocate the remaining of the table rows here
     // call realloc smth.
+    automaton->table = (int*) realloc(automaton->table, 
+        sizeof(int) * TABLE_WIDTH * automaton->numStates);
+
+    // fail links
+
+
 
     delete[] seed;
     return automaton;
@@ -114,8 +125,55 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
     }
 
     // a final state
-    automaton->table[coordinates(state, TABLE_WIDTH-1, TABLE_WIDTH)] = 1;
+    automaton->table[coordinates(state, TABLE_WIDTH-2, TABLE_WIDTH)] = 1;
 }
+
+static void automatonSetSupplyTable(TabNode* automaton) {
+    int* table = automaton->table;
+
+    // root goes to root
+    table[TABLE_WIDTH-1] = 0;
+    queue<int> nodeQ;
+
+    for (int i = 0; i < TABLE_WIDTH-1; ++i) {
+        if (table[i] > 0) {
+            table[coordinates(table[i], TABLE_WIDTH-1, TABLE_WIDTH)] = 0;
+            nodeQ.push_back(table[i]);
+        }
+    }
+
+    // bfs 
+
+    while (!nodeQ.empty()) {
+        int state = nodeQ.front();
+        nodeQ.pop();
+
+        for (int i = 0; i < TABLE_WIDTH-1; ++i) {
+            if (!table[coordinates(state, i, TABLE_WIDTH)]) {
+                continue;
+            }
+
+            int next = table[coordinates(state, i, TABLE_WIDTH)];
+            nodeQ.push(next);
+
+            // damn ugly
+            int fail = table[coordinates(state, TABLE_WIDTH-1, TABLE_WIDTH)];
+            while(table[coordinates(fail, i, TABLE_WIDTH)] == 0 && fail != 0) {
+                fail = table[coordinates(fail, TABLE_WIDTH-1, TABLE_WIDTH)];
+            }
+
+            if (fail == 0) {
+                table[coordinates(next, TABLE_WIDTH-1, TABLE_WIDTH)] = 0;
+            } else {
+                table[coordinates(next, TABLE_WIDTH-1, TABLE_WIDTH)] = 
+                    table[coordinates(fail, i, TABLE_WIDTH)];
+            }
+        }
+
+    }
+
+}
+
 
 static void automatonDeleteTable(TabNode* automaton) {
     delete[] automaton->table;
@@ -125,7 +183,7 @@ static void automatonDeleteTable(TabNode* automaton) {
 /*
     Gets coordinates of a matrix element.
 */
-static inline void coordinates(int i, int j, int numCols) {
+static inline int coordinates(int i, int j, int numCols) {
     return i * numCols + j;
 }
 

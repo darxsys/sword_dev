@@ -12,8 +12,9 @@ using namespace std;
 #include "table_node.h"
 #include "ac_table.h"
 
-const int TABLE_WIDTH = 27;
-const int FINAL_COL = 26;
+const int TABLE_WIDTH = 28;
+const int FINAL_COL = 27;
+const int FAIL_COL = 26;
 
 // ***************************************************************************
 // PUBLIC
@@ -111,16 +112,31 @@ static int automatonTableTargetHits(TabNode* automaton,
     int numHits = 0;
     int state = 0;
 
+    int* table = automaton->table;
+
     for (int i = 0; i < targetLen; ++i) {
         char c = toupper(chainGetChar(target, i)) - 'A';
+        // fprintf(stderr, "Current char: %c\n", c + 'A');
 
-        state = automaton->table[getxy(state, c, TABLE_WIDTH)];
+        while(table[getxy(state, c, TABLE_WIDTH)] == 0 && state != 0) {
+            // fprintf(stderr, "no transition\n");
+            state = table[getxy(state, FAIL_COL, TABLE_WIDTH)];
+        }
 
-        if (automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)]) {
+        if (state == table[getxy(state, c, TABLE_WIDTH)]) {
+            // printf("Character %c continuing\n", c + 'A');
+            continue;
+        }
+
+        state = table[getxy(state, c, TABLE_WIDTH)];
+        // fprintf(stderr, "Current state: %d\n", state);
+        if (table[getxy(state, FINAL_COL, TABLE_WIDTH)]) {
+            // fprintf(stderr, "A hit. Sign: %c\n", c + 'A');
             numHits++;
         }
     }
 
+    // fprintf(stderr, "NUMHITS: %d\n", numHits);
     return numHits;
 }
 
@@ -144,12 +160,14 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
         }
     }
 
+    // for state 0
     vector<uint16> v;
     automaton->positions.push_back(v);
 
     for (int i = 0; i < queryLen - seedLen + 1; ++i) {
         extractSeed(query, i, seedLen, &seed);
 
+        // fprintf(stderr, "Adding seed: %s\n", seed);
         automatonAddWordTable(automaton, seed, seedLen, i);
     }
 
@@ -173,23 +191,30 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
     int index;
 
     for (int i = 0; word[i]; ++i) {
-        char c = word[i] - 'A';
+        // printf("%c", word[i]);
+        // fprintf(stderr, "C indeks %d\n", c);    
+        int c = word[i] - 'A';
         // TODO: check char casting to int, how it works
         index = getxy(state, c, TABLE_WIDTH);
+        // fprintf(stderr, "C indeks %d\n", index);    
         // fprintf(stderr, "Index: %d table size: %d\n", index, automaton->numStates);
         
         if (automaton->table[index] == 0) {
             // create a new state
-            automaton->table[index] = automaton->numStates++;
+            automaton->table[index] = automaton->numStates;
+            automaton->numStates++;
+
             vector<uint16> v;
             automaton->positions.push_back(v);
         }
 
         state = automaton->table[index];
     }
-
+    // printf("\n");
     // a final state
     automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)] = 1;
+
+    // fprintf(stderr, "FINAL state: %d\n", state);
 
     if (automaton->positions[state].size() == 0) {
         automaton->positions[state].push_back(seedCode(word, wordLen));
@@ -203,13 +228,12 @@ static void automatonSetSupplyTable(TabNode* automaton) {
 
     // root goes to root
     queue<int> nodeQ;
-    int* failLinks = new int[automaton->numStates];
-    failLinks[0] = 0;
+    table[FAIL_COL] = 0;
 
-    for (int i = 0; i < TABLE_WIDTH-1; ++i) {
+    for (int i = 0; i < TABLE_WIDTH-2; ++i) {
         if (table[i] > 0) {
             nodeQ.push(table[i]);
-            failLinks[table[i]] = 0;
+            table[getxy(table[i], FAIL_COL, TABLE_WIDTH)] = 0;
         }
     }
 
@@ -218,7 +242,7 @@ static void automatonSetSupplyTable(TabNode* automaton) {
         int state = nodeQ.front();
         nodeQ.pop();
 
-        for (int i = 0; i < TABLE_WIDTH-1; ++i) {
+        for (int i = 0; i < TABLE_WIDTH-2; ++i) {
             if (!table[getxy(state, i, TABLE_WIDTH)]) {
                 continue;
             }
@@ -226,24 +250,15 @@ static void automatonSetSupplyTable(TabNode* automaton) {
             int next = table[getxy(state, i, TABLE_WIDTH)];
             nodeQ.push(next);
 
-            int fail = failLinks[state];
+            int fail = table[getxy(state, FAIL_COL, TABLE_WIDTH)];
             while (table[getxy(fail, i, TABLE_WIDTH)] == 0 && fail != 0) {
-                fail = failLinks[fail];
+                fail = table[getxy(fail, FAIL_COL, TABLE_WIDTH)];
             }
 
-            failLinks[next] = fail;
+            table[getxy(next, FAIL_COL, TABLE_WIDTH)] = 
+                table[getxy(fail, i, TABLE_WIDTH)];
         }
-    }
-
-    for (int i = 1; i < automaton->numStates; ++i) {
-        for (int j = 0; j < TABLE_WIDTH-1; ++j) {
-            if (table[getxy(i, j, TABLE_WIDTH)] == 0) {
-                table[getxy(i, j, TABLE_WIDTH)] = failLinks[i];
-            }
-        }
-    }    
-
-    delete[] failLinks;
+    }  
 }
 
 static void extractSeed(Chain* query, int pos, int len, char** output) {

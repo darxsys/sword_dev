@@ -11,8 +11,8 @@ using namespace std;
 #include "swsharp/swsharp.h"
 #include "table_node.h"
 
-// one additional for a fail link
-const int TABLE_WIDTH = 27 + 1;
+const int TABLE_WIDTH = 27;
+const int FINAL_COL = 26;
 
 // ***************************************************************************
 // PUBLIC
@@ -31,7 +31,7 @@ static void automatonSetSupplyTable(TabNode* automaton);
 
 static void automatonDeleteTable(TabNode* automaton);
 
-static inline int coordinates(int i, int j, int numCols);
+static inline int getxy(int i, int j, int numCols);
 
 // ***************************************************************************
 
@@ -80,8 +80,8 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
 
    //TODO: put memset here
     for (int i = 0; i < queryLen; ++i) {
-        for (int j = 0; j < TABLE_WIDTH+1; ++j) {
-            automaton->table[coordinates(i, j, TABLE_WIDTH)] = 0;
+        for (int j = 0; j < TABLE_WIDTH; ++j) {
+            automaton->table[getxy(i, j, TABLE_WIDTH)] = 0;
         }
     }
 
@@ -98,8 +98,7 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
         sizeof(int) * TABLE_WIDTH * automaton->numStates);
 
     // fail links
-
-
+    automatonSetSupplyTable(automaton);
 
     delete[] seed;
     return automaton;
@@ -114,8 +113,7 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
     for (int i = 0; word[i]; ++i) {
         char c = word[i] - 'A';
         // TODO: check char casting to int, how it works
-        index = coordinates(state, c, TABLE_WIDTH);
-
+        index = getxy(state, c, TABLE_WIDTH);
         if (automaton->table[index] == 0) {
             // create a new state
             automaton->table[index] = automaton->numStates++;
@@ -125,53 +123,55 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
     }
 
     // a final state
-    automaton->table[coordinates(state, TABLE_WIDTH-2, TABLE_WIDTH)] = 1;
+    automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)] = 1;
 }
 
 static void automatonSetSupplyTable(TabNode* automaton) {
     int* table = automaton->table;
 
     // root goes to root
-    table[TABLE_WIDTH-1] = 0;
     queue<int> nodeQ;
+    int* failLinks = new int[automaton->numStates];
+    failLinks[0] = 0;
 
     for (int i = 0; i < TABLE_WIDTH-1; ++i) {
         if (table[i] > 0) {
-            table[coordinates(table[i], TABLE_WIDTH-1, TABLE_WIDTH)] = 0;
             nodeQ.push_back(table[i]);
+            failLinks[table[i]] = 0;
         }
     }
 
     // bfs 
-
     while (!nodeQ.empty()) {
         int state = nodeQ.front();
         nodeQ.pop();
 
         for (int i = 0; i < TABLE_WIDTH-1; ++i) {
-            if (!table[coordinates(state, i, TABLE_WIDTH)]) {
+            if (!table[getxy(state, i, TABLE_WIDTH)]) {
                 continue;
             }
 
-            int next = table[coordinates(state, i, TABLE_WIDTH)];
+            int next = table[getxy(state, i, TABLE_WIDTH)];
             nodeQ.push(next);
 
-            // damn ugly
-            int fail = table[coordinates(state, TABLE_WIDTH-1, TABLE_WIDTH)];
-            while(table[coordinates(fail, i, TABLE_WIDTH)] == 0 && fail != 0) {
-                fail = table[coordinates(fail, TABLE_WIDTH-1, TABLE_WIDTH)];
+            int fail = failLinks[state];
+            while (table[getxy(fail, i, TABLE_WIDTH)] == 0 && fail != 0) {
+                fail = failLinks[fail];
             }
 
-            if (fail == 0) {
-                table[coordinates(next, TABLE_WIDTH-1, TABLE_WIDTH)] = 0;
-            } else {
-                table[coordinates(next, TABLE_WIDTH-1, TABLE_WIDTH)] = 
-                    table[coordinates(fail, i, TABLE_WIDTH)];
-            }
+            failLinks[next] = fail;
         }
-
     }
 
+    for (int i = 1; i < automaton->numStates; ++i) {
+        for (int j = 0; j < TABLE_WIDTH-1; ++j) {
+            if (table[getxy(i, j, TABLE_WIDTH)] == 0) {
+                table[getxy(i, j, TABLE_WIDTH)] = failLinks[i];
+            }
+        }
+    }    
+
+    delete[] failLinks;
 }
 
 
@@ -181,9 +181,9 @@ static void automatonDeleteTable(TabNode* automaton) {
 }
 
 /*
-    Gets coordinates of a matrix element.
+    Gets getxy of a matrix element.
 */
-static inline int coordinates(int i, int j, int numCols) {
+static inline int getxy(int i, int j, int numCols) {
     return i * numCols + j;
 }
 

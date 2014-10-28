@@ -11,7 +11,6 @@
 typedef struct {
     int numStates;
     int* table;
-
 } TabNode;
 
 #endif // __TABLENODEHH__

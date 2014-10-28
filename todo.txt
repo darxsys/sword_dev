@@ -9,10 +9,8 @@ real size? Maybe this is the best. This will waste a lot of memory during the pr
 possible for huge strings. 
 
 2) Functions:
-Create table();
-Delete table(table);
-Access transition(i, j);
-
+Doing transitions.
+Adding another table for hits for every state.
 
 
 

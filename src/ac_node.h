@@ -29,7 +29,6 @@ typedef struct AhoCorasick {
 
         }
         
-        final = 0;
         fail = NULL;
     }
 } ACNode;

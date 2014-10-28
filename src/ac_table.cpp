@@ -31,6 +31,8 @@ static void automatonSetSupplyTable(TabNode* automaton);
 
 static void automatonDeleteTable(TabNode* automaton);
 
+
+static void extractSeed(Chain* query, int pos, int len, char** output);
 static inline int getxy(int i, int j, int numCols);
 
 // ***************************************************************************
@@ -45,14 +47,14 @@ extern void* automatonCreateTables(int seedLen, Chain** queries,
     vector<TabNode*>* automata = new vector<TabNode*>;
 
     for (int i = 0; i < queriesLen; ++i) {
-        automata->push_back(TableCreate(seedLen, queries[i]);
+        automata->push_back(automatonCreateTable(seedLen, queries[i]));
     }
 
     return static_cast<void*>(automata);
 }
 
 extern void automatonDeleteTables(void* automata, int automataLen) {
-    vector<TabNode*>* aut = static_cast<vector<TabNode>*>(automata);
+    vector<TabNode*>* aut = static_cast<vector<TabNode*>*>(automata);
 
     for (int i = 0; i < automataLen; ++i) {
         automatonDeleteTable((*aut)[i]);
@@ -67,10 +69,10 @@ extern void automatonDeleteTables(void* automata, int automataLen) {
 // PRIVATE
 static TabNode* automatonCreateTable(int seedLen, Chain* query) {
     int queryLen = chainGetLength(query);
-    char seed = new char[seedLen+1];
+    char* seed = new char[seedLen+1];
 
     TabNode* automaton = new TabNode;
-    TabNode->numStates = 1;
+    automaton->numStates = 1;
 
     // worst case scenario
     // could be dangerous
@@ -136,7 +138,7 @@ static void automatonSetSupplyTable(TabNode* automaton) {
 
     for (int i = 0; i < TABLE_WIDTH-1; ++i) {
         if (table[i] > 0) {
-            nodeQ.push_back(table[i]);
+            nodeQ.push(table[i]);
             failLinks[table[i]] = 0;
         }
     }
@@ -174,6 +176,14 @@ static void automatonSetSupplyTable(TabNode* automaton) {
     delete[] failLinks;
 }
 
+static void extractSeed(Chain* query, int pos, int len, char** output) {
+    for (int i = pos; i < pos + len; ++i) {
+
+        (*output)[i-pos] = toupper(chainGetChar(query, i)); 
+    }
+
+    (*output)[len] = '\0';
+}
 
 static void automatonDeleteTable(TabNode* automaton) {
     delete[] automaton->table;

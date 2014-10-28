@@ -1,4 +1,4 @@
-#ifdef __TABLENODEHH__
+#ifndef __TABLENODEHH__
 #define __TABLENODEHH__
 
 

@@ -10,12 +10,17 @@ using namespace std;
 
 #include "swsharp/swsharp.h"
 #include "table_node.h"
+#include "ac_table.h"
 
 const int TABLE_WIDTH = 27;
 const int FINAL_COL = 26;
 
 // ***************************************************************************
 // PUBLIC
+extern void* partialIndicesTableCreate(Chain** database, 
+    int databaseStart, int databaseLen, void* automata,
+    int automataLen, int seedLen, Scorer* scorer);
+
 extern void* automatonCreateTables(int seedLen, Chain** queries, int queriesLen);
 extern void automatonDeleteTables(void* automata, int automataLen);
 
@@ -23,13 +28,17 @@ extern void automatonDeleteTables(void* automata, int automataLen);
 
 // ***************************************************************************
 // PRIVATE
+typedef vector<vector<int> > Candidates;
+typedef vector<int> Candidate;
 
 static TabNode* automatonCreateTable(int seedLen, Chain* query);
 static void automatonAddWordTable(TabNode* automaton, char* word, 
     int location);
 static void automatonSetSupplyTable(TabNode* automaton); 
-
 static void automatonDeleteTable(TabNode* automaton);
+
+static int automatonTableTargetHits(TabNode* automaton, 
+    Chain* target, int seedLen);
 
 
 static void extractSeed(Chain* query, int pos, int len, char** output);
@@ -39,6 +48,33 @@ static inline int getxy(int i, int j, int numCols);
 
 // ***************************************************************************
 // PUBLIC
+extern void* partialIndicesTableCreate(Chain** database, 
+    int databaseStart, int databaseLen, void* automata,
+    int automataLen, int seedLen, Scorer* scorer) {
+
+    vector<TabNode*>* aut = static_cast<vector<TabNode*>*>(automata);
+    Candidates* candidates = new Candidates();
+
+    for (int i = 0; i < aut->size(); ++i) {
+        TabNode* automaton = (*aut)[i];
+        Candidate queryCandidates;
+
+        for (int j = databaseStart; j < databaseLen; ++j) {
+            Chain* target = database[j];
+
+            int numHits = automatonTableTargetHits(automaton, target, seedLen);
+
+            if (numHits > 0) {
+                queryCandidates.push_back(j);
+            }
+        }
+
+        (*candidates).push_back(queryCandidates);
+    }
+
+    return candidates;
+}
+
 
 extern void* automatonCreateTables(int seedLen, Chain** queries, 
     int queriesLen) {
@@ -67,6 +103,26 @@ extern void automatonDeleteTables(void* automata, int automataLen) {
 
 // ***************************************************************************
 // PRIVATE
+static int automatonTableTargetHits(TabNode* automaton, 
+    Chain* target, int seedLen) {
+
+    int targetLen = chainGetLength(target);
+    int numHits = 0;
+    int state = 0;
+
+    for (int i = 0; i < targetLen; ++i) {
+        char c = toupper(chainGetChar(target, i)) - 'A';
+
+        state = automaton->table[getxy(state, c, TABLE_WIDTH)];
+
+        if (automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)]) {
+            numHits++;
+        }
+    }
+
+    return numHits;
+}
+
 static TabNode* automatonCreateTable(int seedLen, Chain* query) {
     int queryLen = chainGetLength(query);
     char* seed = new char[seedLen+1];
@@ -126,6 +182,13 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
 
     // a final state
     automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)] = 1;
+
+    if (automaton->positions.size() <= state) {
+        vector<uint16> a(1, location);
+        automaton->positions.push_back(a);
+    } else {
+        automaton->positions[state].push_back(location);
+    }
 }
 
 static void automatonSetSupplyTable(TabNode* automaton) {

@@ -404,7 +404,8 @@ int main(int argc, char* argv[]) {
             // timerStop
             Timeval timer;
             timerStart(&timer);
-            automatonDeleteAutomata(automata, queriesLen);
+            // automatonDeleteAutomata(automata, queriesLen);
+            automatonDeleteTables(automata, queriesLen);
             long long t = timerStop(&timer);
 
             timerPrint("Deletion time", t);

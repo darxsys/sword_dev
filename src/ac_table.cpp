@@ -33,14 +33,15 @@ typedef vector<int> Candidate;
 
 static TabNode* automatonCreateTable(int seedLen, Chain* query);
 static void automatonAddWordTable(TabNode* automaton, char* word, 
-    int location);
+    int wordLen, int location);
+
 static void automatonSetSupplyTable(TabNode* automaton); 
 static void automatonDeleteTable(TabNode* automaton);
 
 static int automatonTableTargetHits(TabNode* automaton, 
     Chain* target, int seedLen);
 
-
+static int seedCode(char* seed, int seedLen);
 static void extractSeed(Chain* query, int pos, int len, char** output);
 static inline int getxy(int i, int j, int numCols);
 
@@ -137,16 +138,19 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
         (TABLE_WIDTH) * seedLen);
 
    //TODO: put memset here
-    for (int i = 0; i < queryLen; ++i) {
+    for (int i = 0; i < queryLen * seedLen; ++i) {
         for (int j = 0; j < TABLE_WIDTH; ++j) {
             automaton->table[getxy(i, j, TABLE_WIDTH)] = 0;
         }
     }
 
+    vector<uint16> v;
+    automaton->positions.push_back(v);
+
     for (int i = 0; i < queryLen - seedLen + 1; ++i) {
         extractSeed(query, i, seedLen, &seed);
 
-        automatonAddWordTable(automaton, seed, i);
+        automatonAddWordTable(automaton, seed, seedLen, i);
     }
 
     // TODO:
@@ -163,7 +167,7 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
 }
 
 static void automatonAddWordTable(TabNode* automaton, char* word,
-    int location) {
+    int wordLen, int location) {
 
     int state = 0;
     int index;
@@ -172,9 +176,13 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
         char c = word[i] - 'A';
         // TODO: check char casting to int, how it works
         index = getxy(state, c, TABLE_WIDTH);
+        // fprintf(stderr, "Index: %d table size: %d\n", index, automaton->numStates);
+        
         if (automaton->table[index] == 0) {
             // create a new state
             automaton->table[index] = automaton->numStates++;
+            vector<uint16> v;
+            automaton->positions.push_back(v);
         }
 
         state = automaton->table[index];
@@ -183,12 +191,11 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
     // a final state
     automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)] = 1;
 
-    if (automaton->positions.size() <= state) {
-        vector<uint16> a(1, location);
-        automaton->positions.push_back(a);
-    } else {
-        automaton->positions[state].push_back(location);
+    if (automaton->positions[state].size() == 0) {
+        automaton->positions[state].push_back(seedCode(word, wordLen));
     }
+
+    automaton->positions[state].push_back(location);
 }
 
 static void automatonSetSupplyTable(TabNode* automaton) {
@@ -248,8 +255,28 @@ static void extractSeed(Chain* query, int pos, int len, char** output) {
     (*output)[len] = '\0';
 }
 
+static int seedCode(char* seed, int seedLen) {
+
+    int code = 0;
+    int start = 5 * (seedLen - 1);
+
+    for (int i = 0; i < seedLen; ++i) {
+        code += static_cast<int>(toupper(seed[i]) - 'A')
+            << (start - 5 * i);
+    }
+
+    return code;
+}
+
 static void automatonDeleteTable(TabNode* automaton) {
-    delete[] automaton->table;
+    free(automaton->table);
+
+    vector<vector<uint16> >& v = automaton->positions;
+    for (int i = 0; i < v.size(); ++i) {
+        v[i].clear();
+    }
+
+    automaton->positions.clear();
     delete automaton;
 }
 

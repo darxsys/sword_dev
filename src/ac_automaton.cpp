@@ -44,6 +44,9 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen);
 
 static int seedCode(Chain* chain, int pos, int seedLen);
 
+static void databaseStatistics(Candidates* candidates, 
+    int candidatesLen, int databaseLen);
+
 // ***************************************************************************
 
 // ***************************************************************************
@@ -88,6 +91,9 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
         (*candidates).push_back(queryCandidates);
     }
+
+    // for every query, output database reduction and then average database reduction
+    databaseStatistics(candidates, automataLen, databaseLen);
 
     // timerPrint("Hits", usecHits);
     // timerPrint("Transitions", tsec);
@@ -296,6 +302,21 @@ static int seedCode(Chain* chain, int pos, int seedLen) {
     }
 
     return code;
+}
+
+static void databaseStatistics(Candidates* candidates, 
+    int candidatesLen, int databaseLen) {
+
+    double sum = 0;
+
+    for (int i = 0; i < candidatesLen; ++i) {
+        int num = (*candidates)[i].size();
+        sum += databaseLen - num;
+
+        fprintf(stderr, "Query: %d eliminated %d seqs\n", i, databaseLen - num);
+    }
+
+    fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen)
 }
 
 // ***************************************************************************

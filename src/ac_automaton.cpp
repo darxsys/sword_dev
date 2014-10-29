@@ -333,17 +333,25 @@ static void databaseStatistics(Candidates* candidates,
 
     sort(vals.begin(), vals.end());
 
-    float median = 0;
+    double median = 0;
     if (vals.size() % 2) {
         median = vals[vals.size()/2];
     } else {
         median = (vals[vals.size()/2-1] + vals[vals.size()/2]) / 2.;
     }
 
+    fprintf(stderr, "Db size: %d\n", databaseLen);
     fprintf(stderr, "Median eliminated: %f\n", median);
     fprintf(stderr, "Min eliminated: %d\n", min);
     fprintf(stderr, "Max eliminated: %d\n", max);
-    fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen)
+    fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen);
+
+    fprintf(stderr, "Percentages\n");
+    fprintf(stderr, "Median eliminated: %lff\n", median / databaseLen);
+    fprintf(stderr, "Min eliminated: %lf\n", min / (double) databaseLen);
+    fprintf(stderr, "Max eliminated: %lf\n", max / (double) databaseLen);
+    fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen / databaseLen);
+
 }
 
 // ***************************************************************************

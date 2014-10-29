@@ -1,3 +1,13 @@
+do 31.10.:
+
+1) provjeriti gornju granicu za 2 cetvorke
+2) probati hash
+3) postotak redukcije baze s jednim hitom na cetvorkama
+
+
+
+
+
 Table automaton:
 
 1) Creation of the table could be problematic. How to correctly allocate table size? Is that even possible?

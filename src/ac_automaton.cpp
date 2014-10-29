@@ -5,6 +5,7 @@
 #include <vector>
 #include <queue>
 #include <unordered_map>
+#include <algorithm>
 
 using namespace std;
 
@@ -308,14 +309,40 @@ static void databaseStatistics(Candidates* candidates,
     int candidatesLen, int databaseLen) {
 
     double sum = 0;
+    int min = -1;
+    int max = -1;
+
+    vector<int> vals;
 
     for (int i = 0; i < candidatesLen; ++i) {
         int num = (*candidates)[i].size();
         sum += databaseLen - num;
 
-        fprintf(stderr, "Query: %d eliminated %d seqs\n", i, databaseLen - num);
+        if (min == -1 || databaseLen - num < min) {
+            min = databaseLen - num;
+        }
+
+        if (databaseLen - num > max) {
+            max = databaseLen - num;
+        }
+
+        vals.push_back(databaseLen - num);
+
+        // fprintf(stderr, "Query: %d eliminated %d seqs\n", i, databaseLen - num);
     }
 
+    sort(vals.begin(), vals.end());
+
+    float median = 0;
+    if (vals.size() % 2) {
+        median = vals[vals.size()/2];
+    } else {
+        median = (vals[vals.size()/2-1] + vals[vals.size()/2]) / 2.;
+    }
+
+    fprintf(stderr, "Median eliminated: %f\n", median);
+    fprintf(stderr, "Min eliminated: %d\n", min);
+    fprintf(stderr, "Max eliminated: %d\n", max);
     fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen)
 }
 

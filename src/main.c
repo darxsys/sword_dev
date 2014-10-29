@@ -25,11 +25,12 @@ Contact the swsharp author by mkorpar@gmail.com.
 #include <stdlib.h>
 #include <string.h>
 
-#include "ac_automaton.h"
 #include "database_hash.h"
 #include "timer.h"
+#include "ac_automaton.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
+
 
 #define ASSERT(expr, fmt, ...)\
     do {\
@@ -67,7 +68,9 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
-    {"permute", no_argument, 0, 'p'},
+    {"use-automata", no_argument, 0, 'a'},
+    {"progress", no_argument, 0, 'r'},
+    {"permute", required_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
 };
@@ -97,7 +100,6 @@ static void valueFunction(double* values, int* scores, Chain* query,
     Chain** database, int databaseLen, int* cards, int cardsLen, void* param);
 
 int main(int argc, char* argv[]) {
-
     char* queryPath = NULL;
     char* databasePath = NULL;
 
@@ -124,12 +126,14 @@ int main(int argc, char* argv[]) {
     int seedLen = 5;
     int maxCandidates = 5000;
 
+    int progress = 0;
     int permute = 0;
     int aaScore = 0;
 
-    while (1) {
+    int useAutomata = 0;
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:ph", options, NULL);
+    while (1) {
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h:a:", options, NULL);
 
         if (argument == -1) {
             break;
@@ -181,8 +185,15 @@ int main(int argc, char* argv[]) {
         case 'd':
             maxCandidates = atoi(optarg);
             break;
+        case 'r':
+            progress = 1;
+            break;
         case 'p':
             permute = 1;
+            aaScore = atoi(optarg);
+            break;
+        case 'a':
+            useAutomata = atoi(optarg);
             break;
         case 'h':
         default:
@@ -215,30 +226,28 @@ int main(int argc, char* argv[]) {
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
 
-    void* automata = NULL;
-    int automataLen = queriesLen;
-    automata = automatonCreateAutomata(seedLen, queries, queriesLen);
-
-    Chain** database = NULL;
-    int databaseLen = 0;
-    int databaseStart = 0;
-    readFastaChains(&database, &databaseLen, databasePath);
-
     threadPoolInitialize(cardsLen + 8);
 
     Scorer* scorer;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
+    void* indices = NULL;
 
-    void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        automata, automataLen, seedLen, maxCandidates, scorer);
+    // if (!useAutomata) {
+    //     Timeval timer;
+    //     timerStart(&timer);
 
-    deleteFastaChains(database, databaseLen);
+    //     indices = databaseIndicesCreate(databasePath, queries, queriesLen,
+    //         seedLen, maxCandidates, progress, permute, scorer, aaScore);
 
-    Timeval swTimer, dbTimer;
+    //     long long usec = timerStop(&timer);
+    //     timerPrint("Hash creation", usec);
+    // }
+
+    /* Timeval swTimer, dbTimer;
     long long dbTotal = 0, swTotal = 0;
-    timerStart(&swTimer);
+    timerStart(&swTimer); */
 
-    if (indices != NULL) {
+    if (indices != NULL || useAutomata) {
 
         if (cache) {
             dumpFastaChains(databasePath);
@@ -253,9 +262,9 @@ int main(int argc, char* argv[]) {
         DbAlignment*** dbAlignments = NULL;
         int* dbAlignmentsLens = NULL;
 
-        // Chain** database = NULL;
-        // int databaseLen = 0;
-        // int databaseStart = 0;
+        Chain** database = NULL;
+        int databaseLen = 0;
+        int databaseStart = 0;
 
         FILE* handle;
         int serialized;
@@ -264,6 +273,19 @@ int main(int argc, char* argv[]) {
             &serialized, databasePath);
 
         int i, j;
+        void* automata;
+
+        if (useAutomata) {
+            Timeval start;
+            timerStart(&start);
+            automata = automatonCreateTables(seedLen, queries, queriesLen);
+            long long usec = timerStop(&start);
+
+            timerPrint("Automaton creation time", usec);
+        }
+
+        Timeval automataTimer;
+        long long automataTime = 0;
 
         while (1) {
 
@@ -282,14 +304,25 @@ int main(int argc, char* argv[]) {
             int* usedIndices = NULL;
             char* usedMask = (char*) calloc(databaseLen, sizeof(char));
 
+            // automata candidates
+            if (useAutomata) {
+                // fprintf(stderr, "Automata test\n");
+                timerStart(&automataTimer);
+                indices = partialIndicesTableCreate(database,
+                    databaseStart, databaseLen, automata, queriesLen, 
+                    seedLen, scorer);
+
+                automataTime += timerStop(&automataTimer);
+            }
+
             for (i = 0; i < queriesLen; ++i) {
 
-                timerStart(&dbTimer);
+                // timerStart(&dbTimer);
 
                 usedIndices = filteredDatabaseCreate(&filteredDatabase,
                     &filteredDatabaseLen, indices, i, database, databaseLen,  1);
 
-                dbTotal += timerStop(&dbTimer);
+                // dbTotal += timerStop(&dbTimer);
 
                 if (filteredDatabaseLen == 0) {
                     dbAlignmentsPart[i] = NULL;
@@ -304,7 +337,7 @@ int main(int argc, char* argv[]) {
                     chainDatabase, scorer, maxAlignments, valueFunction, (void*) eValueParams,
                     maxEValue, NULL, 0, cards, cardsLen, NULL);
 
-                timerStart(&dbTimer);
+                // timerStart(&dbTimer);
 
                 if (usedIndices != NULL) {
                     for (j = 0; j < dbAlignmentsPartLens[i]; ++j) {
@@ -318,11 +351,15 @@ int main(int argc, char* argv[]) {
                     free(usedIndices);
                 }
 
-                dbTotal += timerStop(&dbTimer);
+                // dbTotal += timerStop(&dbTimer);
 
                 chainDatabaseDelete(chainDatabase);
 
                 filteredDatabaseDelete(filteredDatabase);
+            }
+
+            if (useAutomata) {
+                databaseIndicesDelete(indices);
             }
 
             if (dbAlignments == NULL) {
@@ -359,20 +396,31 @@ int main(int argc, char* argv[]) {
 
         deleteFastaChains(database, databaseLen);
 
-        databaseIndicesDelete(indices);
+        if (!useAutomata) {
+            databaseIndicesDelete(indices);
+        } else {
+            timerPrint("Automaton test took", automataTime);
+            
+            // timerStop
+            Timeval timer;
+            timerStart(&timer);
+            // automatonDeleteAutomata(automata, queriesLen);
+            automatonDeleteTables(automata, queriesLen);
+            long long t = timerStop(&timer);
+
+            timerPrint("Deletion time", t);
+        }
     }
 
-    swTotal = timerStop(&swTimer);
+    /* swTotal = timerStop(&swTimer);
     timerPrint("hdbPart", dbTotal);
-    timerPrint("swPart", swTotal);
+    timerPrint("swPart", swTotal); */
 
     scorerDelete(scorer);
 
     threadPoolTerminate();
 
     deleteFastaChains(queries, queriesLen);
-
-    automatonDeleteAutomata(automata, automataLen);
 
     free(cards);
 
@@ -495,6 +543,8 @@ static void help() {
     "    -p, --permute <int>\n"
     "        permuting each seed position if the substitution score is greater\n"
     "        than input value\n"
+    "    --progress\n"
+    "        prints out the program progression\n"
     "    -h, -help\n"
     "        prints out the help\n");
 }

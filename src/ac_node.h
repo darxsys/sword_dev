@@ -1,8 +1,7 @@
 #ifndef __AC_NODEHH__
 #define __AC_NODEHH__
 
-#include <unordered_map>
-#include <list>
+#include <vector>
 
 /*
     State of the automaton.
@@ -21,7 +20,7 @@ typedef struct AhoCorasick {
     int size;
     AhoCorasick* fail;
     AhoCorasick* edge[26];
-    vector<uint16> positions;
+    std::vector<uint16> positions;
 
     AhoCorasick() {
         for (int i = 0; i < 26; ++i) {

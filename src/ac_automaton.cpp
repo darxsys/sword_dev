@@ -347,7 +347,7 @@ static void databaseStatistics(Candidates* candidates,
     fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen);
 
     fprintf(stderr, "Percentages\n");
-    fprintf(stderr, "Median eliminated: %lff\n", median / databaseLen);
+    fprintf(stderr, "Median eliminated: %lf\n", median / databaseLen);
     fprintf(stderr, "Min eliminated: %lf\n", min / (double) databaseLen);
     fprintf(stderr, "Max eliminated: %lf\n", max / (double) databaseLen);
     fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen / databaseLen);

@@ -278,7 +278,8 @@ int main(int argc, char* argv[]) {
         if (useAutomata) {
             Timeval start;
             timerStart(&start);
-            automata = automatonCreateTables(seedLen, queries, queriesLen);
+            // automata = automatonCreateTables(seedLen, queries, queriesLen);
+            automata = automatonCreateAutomata(seedLen, queries, queriesLen);
             long long usec = timerStop(&start);
 
             timerPrint("Automaton creation time", usec);
@@ -308,7 +309,12 @@ int main(int argc, char* argv[]) {
             if (useAutomata) {
                 // fprintf(stderr, "Automata test\n");
                 timerStart(&automataTimer);
-                indices = partialIndicesTableCreate(database,
+
+                // indices = partialIndicesTableCreate(database,
+                //     databaseStart, databaseLen, automata, queriesLen, 
+                //     seedLen, scorer);
+
+                indices = partialIndicesAutomatonCreate(database,
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
 
@@ -404,8 +410,8 @@ int main(int argc, char* argv[]) {
             // timerStop
             Timeval timer;
             timerStart(&timer);
-            // automatonDeleteAutomata(automata, queriesLen);
-            automatonDeleteTables(automata, queriesLen);
+            automatonDeleteAutomata(automata, queriesLen);
+            // automatonDeleteTables(automata, queriesLen);
             long long t = timerStop(&timer);
 
             timerPrint("Deletion time", t);

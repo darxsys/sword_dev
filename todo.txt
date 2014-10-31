@@ -1,3 +1,11 @@
+prije GPU:
+
+1) izracunati prosjecno koliki je postotak broja stanja u odnosu na maksimalni
+    # seedova u kveriju / broj mogucih (max_seed). poseban program.
+
+broj stanja / maks broj stanja i toto.
+
+
 do 31.10.:
 
 1) provjeriti gornju granicu za 2 cetvorke

@@ -1,3 +1,12 @@
+Dario:
+
+resizeanje kod kreacije tablice
+tablica na GPU
+
+Robert:
+slijedno kreiranje i brisanje automata. po potrebi
+
+
 prije GPU:
 
 1) izracunati prosjecno koliki je postotak broja stanja u odnosu na maksimalni

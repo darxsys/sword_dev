@@ -34,7 +34,7 @@ typedef vector<int> Candidate;
 
 static TabNode* automatonCreateTable(int seedLen, Chain* query);
 static void automatonAddWordTable(TabNode* automaton, char* word, 
-    int wordLen, int location);
+    int wordLen, int location, int tableSize);
 
 static void automatonSetSupplyTable(TabNode* automaton); 
 static void automatonDeleteTable(TabNode* automaton);
@@ -147,11 +147,8 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
     TabNode* automaton = new TabNode;
     automaton->numStates = 1;
 
-    // worst case scenario
-    // could be dangerous
-    // extra column for fail link
-    automaton->table = (int*) malloc(sizeof(int) * queryLen * 
-        (TABLE_WIDTH) * seedLen);
+    int currTableSize = 1;
+    automaton->table = (int*) malloc(sizeof(int) * (TABLE_WIDTH));
 
    //TODO: put memset here
     for (int i = 0; i < queryLen * seedLen; ++i) {
@@ -168,7 +165,7 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
         extractSeed(query, i, seedLen, &seed);
 
         // fprintf(stderr, "Adding seed: %s\n", seed);
-        automatonAddWordTable(automaton, seed, seedLen, i);
+        automatonAddWordTable(automaton, seed, seedLen, i, &currTableSize);
     }
 
     // TODO:
@@ -185,7 +182,7 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
 }
 
 static void automatonAddWordTable(TabNode* automaton, char* word,
-    int wordLen, int location) {
+    int wordLen, int location, int* tableSize) {
 
     int state = 0;
     int index;
@@ -203,6 +200,13 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
             // create a new state
             automaton->table[index] = automaton->numStates;
             automaton->numStates++;
+
+            if (numStates > *tableSize) {
+                automaton->table = (int*) realloc(automaton->table, 
+                    sizeof(int) * TABLE_WIDTH * (*tableSize) * 2);
+
+                (*tableSize) *= 2;
+            }
 
             vector<uint16> v;
             automaton->positions.push_back(v);

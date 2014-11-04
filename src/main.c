@@ -278,7 +278,7 @@ int main(int argc, char* argv[]) {
         if (useAutomata) {
             Timeval start;
             timerStart(&start);
-            automata = automatonCreateAutomata(seedLen, queries, queriesLen);
+            automata = automatonTables(seedLen, queries, queriesLen);
             long long usec = timerStop(&start);
 
             timerPrint("Automaton creation time", usec);

@@ -15,6 +15,10 @@ extern void* partialIndicesTableCreate(Chain** database,
 extern void* automatonCreateTables(int seedLen, Chain** queries, int queriesLen);
 extern void automatonDeleteTables(void* automata, int automataLen);
 
+extern void* indicesTableCreateGpu(Chain** database, 
+    int databaseStart, int databaseLen, void* automata,
+    int automataLen, int seedLen, Scorer* scorer);
+
 #ifdef __cplusplus    
 }
 #endif

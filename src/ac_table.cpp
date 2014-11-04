@@ -13,10 +13,6 @@ using namespace std;
 #include "table_node.h"
 #include "ac_table.h"
 
-const int TABLE_WIDTH = 28;
-const int FINAL_COL = 27;
-const int FAIL_COL = 26;
-
 // ***************************************************************************
 // PUBLIC
 extern void* partialIndicesTableCreate(Chain** database, 
@@ -25,6 +21,8 @@ extern void* partialIndicesTableCreate(Chain** database,
 
 extern void* automatonCreateTables(int seedLen, Chain** queries, int queriesLen);
 extern void automatonDeleteTables(void* automata, int automataLen);
+
+extern void* indicesTableCreateGpu(void* automata, int automataLen);
 
 // ***************************************************************************
 
@@ -77,7 +75,6 @@ extern void* partialIndicesTableCreate(Chain** database,
 
     return candidates;
 }
-
 
 extern void* automatonCreateTables(int seedLen, Chain** queries, 
     int queriesLen) {
@@ -206,7 +203,6 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
                     0, sizeof(int) * TABLE_WIDTH * (*tableSize));
 
                 (*tableSize) *= 2;
-
             }
 
             vector<uint16> v;

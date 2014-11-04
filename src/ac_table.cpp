@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <iostream>
 #include <vector>
@@ -34,7 +35,7 @@ typedef vector<int> Candidate;
 
 static TabNode* automatonCreateTable(int seedLen, Chain* query);
 static void automatonAddWordTable(TabNode* automaton, char* word, 
-    int wordLen, int location, int tableSize);
+    int wordLen, int location, int* tableSize);
 
 static void automatonSetSupplyTable(TabNode* automaton); 
 static void automatonDeleteTable(TabNode* automaton);
@@ -151,11 +152,7 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
     automaton->table = (int*) malloc(sizeof(int) * (TABLE_WIDTH));
 
    //TODO: put memset here
-    for (int i = 0; i < queryLen * seedLen; ++i) {
-        for (int j = 0; j < TABLE_WIDTH; ++j) {
-            automaton->table[getxy(i, j, TABLE_WIDTH)] = 0;
-        }
-    }
+    memset(automaton->table, 0, sizeof(int) * TABLE_WIDTH);
 
     // for state 0
     vector<uint16> v;
@@ -201,11 +198,15 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
             automaton->table[index] = automaton->numStates;
             automaton->numStates++;
 
-            if (numStates > *tableSize) {
+            if (automaton->numStates > *tableSize) {
                 automaton->table = (int*) realloc(automaton->table, 
                     sizeof(int) * TABLE_WIDTH * (*tableSize) * 2);
 
+                memset(automaton->table + (*tableSize) * TABLE_WIDTH, 
+                    0, sizeof(int) * TABLE_WIDTH * (*tableSize));
+
                 (*tableSize) *= 2;
+
             }
 
             vector<uint16> v;

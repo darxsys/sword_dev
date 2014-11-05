@@ -52,12 +52,12 @@ extern void* indicesTableCreateGpu(Chain** database,
         sizeof(TableGpu*) * automataLen, 
         cudaMemcpyHostToDevice);
 
-    findCandidates<<dimGrid, dimBlock>>(gpuTablesD, automataLen);
+    findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen);
 
     // clean up
     cudaFree(gpuTablesD);
     for (int i = 0; i < automataLen; ++i) {
-        deleteTableGpu(tab);
+        deleteTableGpu(gpuTables[i]);
     }
     gpuTables.clear();
     return NULL;

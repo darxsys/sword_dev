@@ -10,6 +10,7 @@
 typedef struct {
     int numStates;
     int* table;
+    uint16* positions;
 } TableGpu;
 
 #endif // __ACCUDAUTILSHH__

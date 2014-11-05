@@ -60,17 +60,41 @@ static TableGpu* copyTableToGpu(TabNode* table) {
 
     copyAut->table = states;
 
+    // flatten and copy positions vector
+    int start = 0;
+    vector<int> positions;
+    vector<vector<uint16> > &v = table->positions;
+
+    for (int i = 0; i < copyAut->numStates; ++i) {
+        copyAut->table[i * TABLE_WIDTH + POSITIONS_START] = start;
+
+        positions.insert(positions.end(), v[i].begin(), v[i].end());
+
+        start += v[i].size();
+    }
+
+    uint16* positionsD;
+    cudaMalloc(&positionsD, sizeof(uint16) * positions.size());
+    cudaMemcpy(positionsD, &positions[0], 
+        sizeof(uint16) * positions.size(),
+        cudaMemcpyHostToDevice);
+
+    copyAut->positions = positionsD;
+
     TableGpu* autD;
     cudaMalloc(&autD, sizeof(TableGpu));
     cudaMemcpy(autD, copyAut, sizeof(TableGpu), 
         cudaMemcpyHostToDevice);
-    
+
+    delete copyAut;
     return autD;
 }
 
 static void deleteTableGpu(TableGpu* table) {
     cudaFree(table->table);
+    cudaFree(table->positions);
     cudaFree(table);    
 }
+
 
 // ***************************************************************************

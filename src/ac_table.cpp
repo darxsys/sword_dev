@@ -231,7 +231,7 @@ static void automatonSetSupplyTable(TabNode* automaton) {
     queue<int> nodeQ;
     table[FAIL_COL] = 0;
 
-    for (int i = 0; i < TABLE_WIDTH-2; ++i) {
+    for (int i = 0; i < TABLE_WIDTH-3; ++i) {
         if (table[i] > 0) {
             nodeQ.push(table[i]);
             table[getxy(table[i], FAIL_COL, TABLE_WIDTH)] = 0;
@@ -243,7 +243,7 @@ static void automatonSetSupplyTable(TabNode* automaton) {
         int state = nodeQ.front();
         nodeQ.pop();
 
-        for (int i = 0; i < TABLE_WIDTH-2; ++i) {
+        for (int i = 0; i < TABLE_WIDTH-3; ++i) {
             if (!table[getxy(state, i, TABLE_WIDTH)]) {
                 continue;
             }

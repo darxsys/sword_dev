@@ -5,9 +5,10 @@
 
 typedef unsigned short uint16;
 
-const int TABLE_WIDTH = 28;
-const int FINAL_COL = 27;
-const int FAIL_COL = 26;
+const int TABLE_WIDTH = 29;
+const int FINAL_COL = 28;
+const int FAIL_COL = 27;
+const int POSITIONS_START = 26;
 
 /*
     numStates - denotes the number of states and the number of rows in the table

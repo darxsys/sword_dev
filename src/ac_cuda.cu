@@ -25,6 +25,8 @@ extern void* indicesTableCreateGpu(Chain** database,
 static TableGpu* copyTableToGpu(TabNode* table);
 static void deleteTableGpu(TableGpu* table);
 
+__global__ static void findCandidates(TableGpu* automata, int automataLen);
+
 // ***************************************************************************
 // PUBLIC
 extern void* indicesTableCreateGpu(Chain** database, 
@@ -32,14 +34,32 @@ extern void* indicesTableCreateGpu(Chain** database,
     int automataLen, int seedLen, Scorer* scorer) {
 
     vector<TabNode*>* aut = static_cast<vector<TabNode*>*>(automata);
+    vector<TableGpu*> gpuTables;
+    gpuTables.reserve(automataLen);
 
     for (int i = 0; i < automataLen; ++i) {
         TabNode* autH = (*aut)[i];
-        TableGpu* tab = copyTableToGpu(autH);
+        gpuTables.push_back(copyTableToGpu(autH));
 
-        deleteTableGpu(tab);
     }
 
+    dim3 dimGrid(1,1,1);
+    dim3 dimBlock(1,1,1);
+
+    TableGpu* gpuTablesD;
+    cudaMalloc(&gpuTablesD, sizeof(TableGpu*) * automataLen);
+    cudaMemcpy(gpuTablesD, &gpuTables[0], 
+        sizeof(TableGpu*) * automataLen, 
+        cudaMemcpyHostToDevice);
+
+    findCandidates<<dimGrid, dimBlock>>(gpuTablesD, automataLen);
+
+    // clean up
+    cudaFree(gpuTablesD);
+    for (int i = 0; i < automataLen; ++i) {
+        deleteTableGpu(tab);
+    }
+    gpuTables.clear();
     return NULL;
 }
 // ***************************************************************************
@@ -96,5 +116,11 @@ static void deleteTableGpu(TableGpu* table) {
     cudaFree(table);    
 }
 
+// ***************************************************************************
 
 // ***************************************************************************
+// GPU Modules
+
+__global__ static void findCandidates(TableGpu* automata, int automataLen) {
+    printf("heklo worls\n");
+}

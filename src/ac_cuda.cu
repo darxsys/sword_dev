@@ -122,5 +122,5 @@ static void deleteTableGpu(TableGpu* table) {
 // GPU Modules
 
 __global__ static void findCandidates(TableGpu* automata, int automataLen) {
-    printf("heklo worls\n");
+    return;
 }

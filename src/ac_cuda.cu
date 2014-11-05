@@ -124,3 +124,5 @@ static void deleteTableGpu(TableGpu* table) {
 __global__ static void findCandidates(TableGpu* automata, int automataLen) {
     return;
 }
+
+// ***************************************************************************

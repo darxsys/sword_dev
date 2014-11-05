@@ -1,7 +1,11 @@
 Dario:
 
-resizeanje kod kreacije tablice
-tablica na GPU
+tablica na GPU:
+
+sad treba jos napisati kernel. Kernelu se proslijedi array automata koji u sebi sadrze sve potrebno za izvrsavanje.
+
+Treba napraviti da svaki thread uzme jedan automat, popuni kandidate pomocu prijelaza u device vector i onda se taj device vector
+vrati na host u host_vector i to je to.
 
 Robert:
 slijedno kreiranje i brisanje automata. po potrebi

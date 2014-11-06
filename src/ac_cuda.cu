@@ -104,7 +104,9 @@ extern void* indicesTableCreateGpu(Chain** database,
 
 
     dim3 dimGrid(1,1,1);
-    dim3 dimBlock(1,1,1);
+    // TODO: change
+    dim3 dimBlock(automataLen,1,1);
+
     findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, chainsGpuD, 
         numTargets, candidatesD);
 
@@ -129,6 +131,7 @@ extern void* indicesTableCreateGpu(Chain** database,
         candidates->push_back(queryCandidates);
     }
 
+    free(candidatesH);
 
     //**************************************************************************
     // CLEAN UP
@@ -293,7 +296,7 @@ __global__ static void findCandidates(TableGpu** automata,
 
     }
 
-    printf("heklo worls\n");
+    // printf("heklo worls\n");
     return;
 }
 

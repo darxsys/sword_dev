@@ -139,3 +139,5 @@ __global__ static void findCandidates(TableGpu* automata,
     printf("heklo worls\n");
     return;
 }
+
+// ***************************************************************************

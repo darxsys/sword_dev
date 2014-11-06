@@ -317,8 +317,6 @@ int main(int argc, char* argv[]) {
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
 
-                return 0;
-
                 automataTime += timerStop(&automataTimer);
             }
 

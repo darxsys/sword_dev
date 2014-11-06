@@ -34,7 +34,8 @@ static void chainGpuCreate(Chain* chain, ChainGpu** chainD, ChainGpu** chainH);
 static void chainGpuDelete(ChainGpu* chainD, ChainGpu* chainH);
 
 __global__ static void findCandidates(TableGpu** automata, 
-    int automataLen, int* candidates);
+    int automataLen, ChainGpu** database, int databaseLen,
+    int* candidates);
 
 // ***************************************************************************
 // PUBLIC
@@ -97,17 +98,40 @@ extern void* indicesTableCreateGpu(Chain** database,
         sizeof(ChainGpu*) * numTargets, TO_GPU));
 
     //**************************************************************************
+    int* candidatesD;
+    CUDA_SAFE_CALL(cudaMalloc(&candidatesD, sizeof(int) * 5001 * automataLen));
+    int* candidatesH = (int*) malloc(sizeof(int) * 5001 * automataLen);
 
 
     dim3 dimGrid(1,1,1);
     dim3 dimBlock(1,1,1);
+    findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, chainsGpuD, 
+        numTargets, candidatesD);
 
-    int* candidatesD; 
-    CUDA_SAFE_CALL(cudaMalloc(&candidatesD, sizeof(int) * 5001 * automataLen));
+    CUDA_SAFE_CALL(cudaMemcpy(candidatesH, candidatesD, 
+        sizeof(int) * 5001 * automataLen, FROM_GPU));
 
-    findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, candidatesD);
+    //**************************************************************************
+    // EXTRACT CANDIDATES
 
-    // clean up
+    Candidates* candidates = new Candidates();
+    candidates->reserve(automataLen);
+    for (int i = 0; i < automataLen; ++i) {
+        Candidate queryCandidates;
+
+        int size = candidatesH[i * 5001];
+        // printf("Size: %d\n", size);
+        for (int j = 0; j < size; ++j) {
+            // printf("Kandidat: %d\n", candidatesH[i * 5001 + j + 1]);
+            queryCandidates.push_back(candidatesH[i * 5001 + j + 1]);
+        }
+
+        candidates->push_back(queryCandidates);
+    }
+
+
+    //**************************************************************************
+    // CLEAN UP
     for (int i = 0; i < automataLen; ++i) {
         deleteTableGpu(gpuTables[i], hostTables[i]);
     }
@@ -121,7 +145,9 @@ extern void* indicesTableCreateGpu(Chain** database,
     CUDA_SAFE_CALL(cudaFree(candidatesD));
 
     gpuTables.clear();
-    return NULL;
+    //**************************************************************************
+
+    return static_cast<void*>(candidates);
 }
 // ***************************************************************************
 
@@ -212,7 +238,60 @@ static void chainGpuDelete(ChainGpu* chainD, ChainGpu* chainH) {
 // GPU Modules
 
 __global__ static void findCandidates(TableGpu** automata, 
-    int automataLen, int* candidates) {
+    int automataLen, ChainGpu** database, int databaseLen,
+    int* candidates) {
+
+    int index = threadIdx.x;
+
+    int candidatesSize = 0;
+
+    if (index < automataLen) {
+        // printf("Inside\n");
+        candidates[index * 5001] = 0;
+
+        int* table = automata[index]->table;
+
+        for (int i = 0; i < databaseLen; ++i) {
+            // printf("there is a db\n");
+            int targetLen = database[i]->len;
+            char* codes = database[i]->codes;
+
+            int state = 0;
+            int numHits = 0;
+            // do transitions on the automaton and fill candidates
+
+            // printf("targetlen %d\n", targetLen);
+            for (int k = 0; k < targetLen; ++k) {
+                int code = codes[k];
+
+                while(table[state * TABLE_WIDTH + code] == 0 && state != 0) {
+                    // fprintf(stderr, "no transition\n");
+                    state = table[state * TABLE_WIDTH + FAIL_COL];
+                }
+
+                if (state == table[state * TABLE_WIDTH + code]) {
+                    // printf("Character %c continuing\n", c + 'A');
+                    continue;
+                }
+
+                state = table[state * TABLE_WIDTH + code];
+                // fprintf(stderr, "Current state: %d\n", state);
+                if (table[state * TABLE_WIDTH + FINAL_COL]) {
+                    // fprintf(stderr, "A hit. Sign: %c\n", c + 'A');
+                    // printf("A hit\n");
+                    numHits++;
+                }
+
+            }
+
+            if (numHits > 0) {
+                candidates[index * 5001 + (candidatesSize + 1) % 5000] = i;
+                candidatesSize++;
+                candidates[index * 5001] = candidatesSize;
+            }
+        }
+
+    }
 
     printf("heklo worls\n");
     return;

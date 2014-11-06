@@ -9,6 +9,7 @@
 using namespace std;
 
 #include "swsharp/swsharp.h"
+#include "swsharp/cuda_utils.h"
 #include "table_node.h"
 #include "ac_table.h"
 #include "ac_cuda_utils.h"
@@ -22,10 +23,14 @@ extern void* indicesTableCreateGpu(Chain** database,
 
 // ***************************************************************************
 // PRIVATE
+typedef vector<vector<int> > Candidates;
+typedef vector<int> Candidate;
+
 static TableGpu* copyTableToGpu(TabNode* table);
 static void deleteTableGpu(TableGpu* table);
 
-__global__ static void findCandidates(TableGpu* automata, int automataLen);
+__global__ static void findCandidates(TableGpu* automata, 
+    int automataLen, int* candidates);
 
 // ***************************************************************************
 // PUBLIC
@@ -47,15 +52,17 @@ extern void* indicesTableCreateGpu(Chain** database,
     dim3 dimBlock(1,1,1);
 
     TableGpu* gpuTablesD;
-    cudaMalloc(&gpuTablesD, sizeof(TableGpu*) * automataLen);
-    cudaMemcpy(gpuTablesD, &gpuTables[0], 
+    CUDA_SAFE_CALL(cudaMalloc(&gpuTablesD, sizeof(TableGpu*) * automataLen));
+    CUDA_SAFE_CALL(cudaMemcpy(gpuTablesD, &gpuTables[0], 
         sizeof(TableGpu*) * automataLen, 
-        cudaMemcpyHostToDevice);
+        cudaMemcpyHostToDevice));
 
-    findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen);
+    int* candidatesD; 
+    CUDA_SAFE_CALL(cudaMalloc(&candidatesD, sizeof(int) * 5001 * automataLen));
+    findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, candidatesD);
 
     // clean up
-    cudaFree(gpuTablesD);
+    CUDA_SAFE_CALL(cudaFree(gpuTablesD));
     for (int i = 0; i < automataLen; ++i) {
         deleteTableGpu(gpuTables[i]);
     }
@@ -73,13 +80,6 @@ static TableGpu* copyTableToGpu(TabNode* table) {
     copyAut->numStates = table->numStates;
     copyAut->table = table->table;
 
-    int* states;
-    cudaMalloc(&states, sizeof(int) * copyAut->numStates);
-    cudaMemcpy(states, copyAut->table, sizeof(int) * copyAut->numStates,
-        cudaMemcpyHostToDevice);
-
-    copyAut->table = states;
-
     // flatten and copy positions vector
     int start = 0;
     vector<int> positions;
@@ -94,26 +94,38 @@ static TableGpu* copyTableToGpu(TabNode* table) {
     }
 
     uint16* positionsD;
-    cudaMalloc(&positionsD, sizeof(uint16) * positions.size());
-    cudaMemcpy(positionsD, &positions[0], 
+    CUDA_SAFE_CALL(cudaMalloc(&positionsD, sizeof(uint16) * positions.size()));
+
+    CUDA_SAFE_CALL(cudaMemcpy(positionsD, &positions[0], 
         sizeof(uint16) * positions.size(),
-        cudaMemcpyHostToDevice);
+        cudaMemcpyHostToDevice));
 
     copyAut->positions = positionsD;
 
+    // state table
+    int* statesD;
+    CUDA_SAFE_CALL(cudaMalloc(&statesD, sizeof(int) * copyAut->numStates * TABLE_WIDTH));
+
+    CUDA_SAFE_CALL(cudaMemcpy(statesD, copyAut->table,
+        sizeof(int) * copyAut->numStates * TABLE_WIDTH, 
+        cudaMemcpyHostToDevice));
+
+    copyAut->table = statesD;
+
     TableGpu* autD;
-    cudaMalloc(&autD, sizeof(TableGpu));
-    cudaMemcpy(autD, copyAut, sizeof(TableGpu), 
-        cudaMemcpyHostToDevice);
+    CUDA_SAFE_CALL(cudaMalloc(&autD, sizeof(TableGpu)));
+
+    CUDA_SAFE_CALL(cudaMemcpy(autD, copyAut, sizeof(TableGpu), 
+        cudaMemcpyHostToDevice));
 
     delete copyAut;
     return autD;
 }
 
 static void deleteTableGpu(TableGpu* table) {
-    cudaFree(table->table);
-    cudaFree(table->positions);
-    cudaFree(table);    
+    CUDA_SAFE_CALL(cudaFree(table->table));
+    CUDA_SAFE_CALL(cudaFree(table->positions));
+    CUDA_SAFE_CALL(cudaFree(table));    
 }
 
 // ***************************************************************************
@@ -121,6 +133,9 @@ static void deleteTableGpu(TableGpu* table) {
 // ***************************************************************************
 // GPU Modules
 
-__global__ static void findCandidates(TableGpu* automata, int automataLen) {
+__global__ static void findCandidates(TableGpu* automata, 
+    int automataLen, int* candidates) {
+
+    printf("heklo worls\n");
     return;
 }

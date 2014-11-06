@@ -28,6 +28,7 @@ Contact the swsharp author by mkorpar@gmail.com.
 #include "database_hash.h"
 #include "timer.h"
 #include "ac_automaton.h"
+#include "ac_table.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
 
@@ -308,9 +309,15 @@ int main(int argc, char* argv[]) {
             if (useAutomata) {
                 // fprintf(stderr, "Automata test\n");
                 timerStart(&automataTimer);
-                indices = partialIndicesTableCreate(database,
+                // indices = partialIndicesTableCreate(database,
+                //     databaseStart, databaseLen, automata, queriesLen, 
+                //     seedLen, scorer);
+
+                indices = indicesTableCreateGpu(database,
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
+
+                return 0;
 
                 automataTime += timerStop(&automataTimer);
             }

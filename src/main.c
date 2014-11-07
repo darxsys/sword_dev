@@ -317,18 +317,18 @@ int main(int argc, char* argv[]) {
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
 
-                fprintf(stderr, "Indices extracted\n");
+                // fprintf(stderr, "Indices extracted\n");
 
                 automataTime += timerStop(&automataTimer);
                 timerPrint("Automaton test took", automataTime);
             }
 
             for (i = 0; i < queriesLen; ++i) {
-                fprintf(stderr, "Current query %d\n", i);
-                fprintf(stderr, "Current query name %s\n", chainGetName(queries[i]));
+                // fprintf(stderr, "Current query %d\n", i);
+                // fprintf(stderr, "Current query name %s\n", chainGetName(queries[i]));
 
                 // timerStart(&dbTimer);
-                fprintf(stderr, "Getting filtered db\n");
+                // fprintf(stderr, "Getting filtered db\n");
                 usedIndices = filteredDatabaseCreate(&filteredDatabase,
                     &filteredDatabaseLen, indices, i, database, databaseLen,  1);
 
@@ -340,16 +340,16 @@ int main(int argc, char* argv[]) {
                     continue;
                 }
 
-                fprintf(stderr, "Creating chane db\n");
+                // fprintf(stderr, "Creating chane db\n");
                 chainDatabase = chainDatabaseCreate(filteredDatabase, 0,
                     filteredDatabaseLen, cards, cardsLen);
-                fprintf(stderr, "Doing alignments\n");
+                // fprintf(stderr, "Doing alignments\n");
 
                 alignDatabase(&dbAlignmentsPart[i], &dbAlignmentsPartLens[i], algorithm, queries[i],
                     chainDatabase, scorer, maxAlignments, valueFunction, (void*) eValueParams,
                     maxEValue, NULL, 0, cards, cardsLen, NULL);
 
-                fprintf(stderr, "Alignments performed\n");
+                // fprintf(stderr, "Alignments performed\n");
                 // timerStart(&dbTimer);
 
                 if (usedIndices != NULL) {
@@ -364,7 +364,7 @@ int main(int argc, char* argv[]) {
                     free(usedIndices);
                 }
 
-                fprintf(stderr, "Getting target done\n");
+                // fprintf(stderr, "Getting target done\n");
 
                 // dbTotal += timerStop(&dbTimer);
 
@@ -372,7 +372,7 @@ int main(int argc, char* argv[]) {
 
                 filteredDatabaseDelete(filteredDatabase);
 
-                fprintf(stderr, "Deleting done\n");
+                // fprintf(stderr, "Deleting done\n");
             }
 
             if (useAutomata) {

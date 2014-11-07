@@ -297,7 +297,7 @@ __global__ static void findCandidates(TableGpu** automata,
             }
 
             if (numHits > 0) {
-                candidates[index * 5001 + (candidatesSize + 1) % 5000] = i;
+                candidates[index * 5001 + (candidatesSize % 5000 + 1)] = i;
                 candidatesSize = min(candidatesSize + 1, 5000);
                 // candidatesSize = candidatesSize + 1 > 5000 ? 5000 : candidatesSize + 1;
             }
@@ -305,7 +305,7 @@ __global__ static void findCandidates(TableGpu** automata,
             // printf("Thread id: %d num hits: %d\n", index, numHits);
         }
 
-        printf("Candidates size: %d\n", candidatesSize);
+        // printf("Candidates size: %d\n", candidatesSize);
         candidates[index * 5001] = candidatesSize;
     }
 }

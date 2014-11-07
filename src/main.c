@@ -320,6 +320,7 @@ int main(int argc, char* argv[]) {
                 fprintf(stderr, "Indices extracted\n");
 
                 automataTime += timerStop(&automataTimer);
+                timerPrint("Automaton test took", automataTime);
             }
 
             for (i = 0; i < queriesLen; ++i) {
@@ -415,7 +416,6 @@ int main(int argc, char* argv[]) {
         if (!useAutomata) {
             databaseIndicesDelete(indices);
         } else {
-            timerPrint("Automaton test took", automataTime);
             
             // timerStop
             Timeval timer;

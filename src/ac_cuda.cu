@@ -107,10 +107,14 @@ extern void* indicesTableCreateGpu(Chain** database,
     CUDA_SAFE_CALL(cudaMalloc(&candidatesD, sizeof(int) * 5001 * automataLen));
     int* candidatesH = (int*) malloc(sizeof(int) * 5001 * automataLen);
 
+    //**************************************************************************
+    // INVOKE KERNEL
+    int grid_x = automataLen / 32 + 1;
+    int block_x = 32;
 
-    dim3 dimGrid(1,1,1);
+    dim3 dimGrid(grid_x,1,1);
     // fprintf(stderr,"Automata len: %d\n", automataLen);
-    dim3 dimBlock(automataLen,1,1);
+    dim3 dimBlock(block_x,1,1);
 
     fprintf(stderr,"Invoking kernel\n");
     findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, chainsGpuD, 
@@ -133,6 +137,7 @@ extern void* indicesTableCreateGpu(Chain** database,
         for (int j = 0; j < size; ++j) {
             // fprintf(stderr,"Kandidat: %d\n", candidatesH[i * 5001 + j + 1]);
             queryCandidates.push_back(candidatesH[i * 5001 + j + 1]);
+            // fprintf(stderr, "Candidate is: %d\n", candidatesH[i * 5001 + j + 1]);
         }
 
         candidates->push_back(queryCandidates);
@@ -252,8 +257,8 @@ __global__ static void findCandidates(TableGpu** automata,
     int automataLen, ChainGpu** database, int databaseLen,
     int* candidates) {
 
-    int index = threadIdx.x;
-    printf("Thread ID awake: %d\n", index);
+    int index = blockIdx.x * 32 + threadIdx.x;
+    // printf("Thread ID awake: %d\n", index);
 
     int candidatesSize = 0;
 

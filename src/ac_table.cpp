@@ -146,9 +146,8 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
     automaton->numStates = 1;
 
     int currTableSize = 1;
-    automaton->table = (int*) malloc(sizeof(int) * (TABLE_WIDTH));
 
-   //TODO: put memset here
+    automaton->table = (int*) malloc(sizeof(int) * (TABLE_WIDTH));
     memset(automaton->table, 0, sizeof(int) * TABLE_WIDTH);
 
     // for state 0
@@ -157,14 +156,9 @@ static TabNode* automatonCreateTable(int seedLen, Chain* query) {
 
     for (int i = 0; i < queryLen - seedLen + 1; ++i) {
         extractSeed(query, i, seedLen, &seed);
-
-        // fprintf(stderr, "Adding seed: %s\n", seed);
         automatonAddWordTable(automaton, seed, seedLen, i, &currTableSize);
     }
 
-    // TODO:
-    // deallocate the remaining of the table rows here
-    // call realloc smth.
     automaton->table = (int*) realloc(automaton->table, 
         sizeof(int) * TABLE_WIDTH * automaton->numStates);
 
@@ -182,13 +176,8 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
     int index;
 
     for (int i = 0; word[i]; ++i) {
-        // printf("%c", word[i]);
-        // fprintf(stderr, "C indeks %d\n", c);    
         int c = word[i] - 'A';
-        // TODO: check char casting to int, how it works
         index = getxy(state, c, TABLE_WIDTH);
-        // fprintf(stderr, "C indeks %d\n", index);    
-        // fprintf(stderr, "Index: %d table size: %d\n", index, automaton->numStates);
         
         if (automaton->table[index] == 0) {
             // create a new state
@@ -211,11 +200,8 @@ static void automatonAddWordTable(TabNode* automaton, char* word,
 
         state = automaton->table[index];
     }
-    // printf("\n");
-    // a final state
-    automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)] = 1;
 
-    // fprintf(stderr, "FINAL state: %d\n", state);
+    automaton->table[getxy(state, FINAL_COL, TABLE_WIDTH)] = 1;
 
     if (automaton->positions[state].size() == 0) {
         automaton->positions[state].push_back(seedCode(word, wordLen));
@@ -252,6 +238,7 @@ static void automatonSetSupplyTable(TabNode* automaton) {
             nodeQ.push(next);
 
             int fail = table[getxy(state, FAIL_COL, TABLE_WIDTH)];
+            
             while (table[getxy(fail, i, TABLE_WIDTH)] == 0 && fail != 0) {
                 fail = table[getxy(fail, FAIL_COL, TABLE_WIDTH)];
             }

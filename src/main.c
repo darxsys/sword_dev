@@ -279,6 +279,7 @@ int main(int argc, char* argv[]) {
         if (useAutomata) {
             Timeval start;
             timerStart(&start);
+
             automata = automatonCreateTables(seedLen, queries, queriesLen);
             long long usec = timerStop(&start);
 
@@ -307,12 +308,11 @@ int main(int argc, char* argv[]) {
 
             // automata candidates
             if (useAutomata) {
-                // fprintf(stderr, "Automata test\n");
+                fprintf(stderr, "Automata test\n");
                 timerStart(&automataTimer);
-                // indices = partialIndicesTableCreate(database,
-                //     databaseStart, databaseLen, automata, queriesLen, 
-                //     seedLen, scorer);
-
+                //indices = partialIndicesTableCreate(database,
+                  //  databaseStart, databaseLen, automata, queriesLen, 
+                    //seedLen, scorer);
                 indices = indicesTableCreateGpu(database,
                     databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);

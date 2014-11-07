@@ -43,6 +43,7 @@ extern void* indicesTableCreateGpu(Chain** database,
     int databaseStart, int databaseLen, void* automata,
     int automataLen, int seedLen, Scorer* scorer) {
 
+    fprintf(stderr,"Creating indices\n");
     vector<TabNode*>* aut = static_cast<vector<TabNode*>*>(automata);
 
     vector<TableGpu*> gpuTables;
@@ -61,7 +62,7 @@ extern void* indicesTableCreateGpu(Chain** database,
 
     //**************************************************************************
     // SEND AUTOMATA TO GPU
-    
+    fprintf(stderr,"Sending automata to gpu\n");
     for (int i = 0; i < automataLen; ++i) {
         TabNode* autH = (*aut)[i];
 
@@ -69,8 +70,9 @@ extern void* indicesTableCreateGpu(Chain** database,
 
         gpuTables.push_back(copyTableToGpu(autH, &hostCopy));
         hostTables.push_back(hostCopy);
-        // printf("%p\n", gpuTables[i]);
+        // fprintf(stderr,"%p\n", gpuTables[i]);
     }
+    fprintf(stderr,"Done\n");
 
     TableGpu** gpuTablesD;
     CUDA_SAFE_CALL(cudaMalloc(&gpuTablesD, sizeof(TableGpu*) * automataLen));
@@ -82,6 +84,7 @@ extern void* indicesTableCreateGpu(Chain** database,
     //**************************************************************************
     // SEND DATABASE TO GPU
 
+    fprintf(stderr,"Sending database to gpu.\n");
     for (int i = databaseStart; i < databaseLen; ++i) {
         ChainGpu* chainD;
         ChainGpu* chainH;
@@ -91,6 +94,7 @@ extern void* indicesTableCreateGpu(Chain** database,
         gpuChains.push_back(chainD);
         hostChains.push_back(chainH);
     }
+    fprintf(stderr,"DOne\n");
 
     ChainGpu** chainsGpuD;
     CUDA_SAFE_CALL(cudaMalloc(&chainsGpuD, sizeof(ChainGpu*) * numTargets));
@@ -98,15 +102,17 @@ extern void* indicesTableCreateGpu(Chain** database,
         sizeof(ChainGpu*) * numTargets, TO_GPU));
 
     //**************************************************************************
+    fprintf(stderr,"Allocating candidates.\n");
     int* candidatesD;
     CUDA_SAFE_CALL(cudaMalloc(&candidatesD, sizeof(int) * 5001 * automataLen));
     int* candidatesH = (int*) malloc(sizeof(int) * 5001 * automataLen);
 
 
     dim3 dimGrid(1,1,1);
-    // TODO: change
+    // fprintf(stderr,"Automata len: %d\n", automataLen);
     dim3 dimBlock(automataLen,1,1);
 
+    fprintf(stderr,"Invoking kernel\n");
     findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, chainsGpuD, 
         numTargets, candidatesD);
 
@@ -116,15 +122,16 @@ extern void* indicesTableCreateGpu(Chain** database,
     //**************************************************************************
     // EXTRACT CANDIDATES
 
+    fprintf(stderr,"Extracting candidates\n");
     Candidates* candidates = new Candidates();
     candidates->reserve(automataLen);
     for (int i = 0; i < automataLen; ++i) {
         Candidate queryCandidates;
 
         int size = candidatesH[i * 5001];
-        // printf("Size: %d\n", size);
+        // fprintf(stderr,"Size: %d\n", size);
         for (int j = 0; j < size; ++j) {
-            // printf("Kandidat: %d\n", candidatesH[i * 5001 + j + 1]);
+            // fprintf(stderr,"Kandidat: %d\n", candidatesH[i * 5001 + j + 1]);
             queryCandidates.push_back(candidatesH[i * 5001 + j + 1]);
         }
 
@@ -132,6 +139,7 @@ extern void* indicesTableCreateGpu(Chain** database,
     }
 
     free(candidatesH);
+    fprintf(stderr,"Done\n");
 
     //**************************************************************************
     // CLEAN UP
@@ -149,7 +157,7 @@ extern void* indicesTableCreateGpu(Chain** database,
 
     gpuTables.clear();
     //**************************************************************************
-
+    fprintf(stderr,"Done cleaning\n");
     return static_cast<void*>(candidates);
 }
 // ***************************************************************************
@@ -186,7 +194,8 @@ static TableGpu* copyTableToGpu(TabNode* table, TableGpu** hostCopy) {
 
     // state table
     int* statesD;
-    CUDA_SAFE_CALL(cudaMalloc(&statesD, sizeof(int) * (*hostCopy)->numStates * TABLE_WIDTH));
+    CUDA_SAFE_CALL(cudaMalloc(&statesD, 
+        sizeof(int) * (*hostCopy)->numStates * TABLE_WIDTH));
 
     CUDA_SAFE_CALL(cudaMemcpy(statesD, (*hostCopy)->table,
         sizeof(int) * (*hostCopy)->numStates * TABLE_WIDTH, 
@@ -200,7 +209,6 @@ static TableGpu* copyTableToGpu(TabNode* table, TableGpu** hostCopy) {
     CUDA_SAFE_CALL(cudaMemcpy(autD, (*hostCopy), sizeof(TableGpu), 
         cudaMemcpyHostToDevice));
 
-    // printf("autd %p\n", autD);
     return autD;
 }
 
@@ -245,6 +253,7 @@ __global__ static void findCandidates(TableGpu** automata,
     int* candidates) {
 
     int index = threadIdx.x;
+    printf("Thread ID awake: %d\n", index);
 
     int candidatesSize = 0;
 
@@ -268,20 +277,15 @@ __global__ static void findCandidates(TableGpu** automata,
                 int code = codes[k];
 
                 while(table[state * TABLE_WIDTH + code] == 0 && state != 0) {
-                    // fprintf(stderr, "no transition\n");
                     state = table[state * TABLE_WIDTH + FAIL_COL];
                 }
 
                 if (state == table[state * TABLE_WIDTH + code]) {
-                    // printf("Character %c continuing\n", c + 'A');
                     continue;
                 }
 
                 state = table[state * TABLE_WIDTH + code];
-                // fprintf(stderr, "Current state: %d\n", state);
                 if (table[state * TABLE_WIDTH + FINAL_COL]) {
-                    // fprintf(stderr, "A hit. Sign: %c\n", c + 'A');
-                    // printf("A hit\n");
                     numHits++;
                 }
 
@@ -290,14 +294,13 @@ __global__ static void findCandidates(TableGpu** automata,
             if (numHits > 0) {
                 candidates[index * 5001 + (candidatesSize + 1) % 5000] = i;
                 candidatesSize++;
-                candidates[index * 5001] = candidatesSize;
             }
+
+            // printf("Thread id: %d num hits: %d\n", index, numHits);
         }
 
+        candidates[index * 5001] = candidatesSize;
     }
-
-    // printf("heklo worls\n");
-    return;
 }
 
 // ***************************************************************************

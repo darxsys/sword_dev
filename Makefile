@@ -19,11 +19,11 @@ L_CMD = $(addprefix -L, ../lib )
 
 DEP_LIBS = ../lib/libswsharp.a
 
-CC_FLAGS = $(I_CMD) -O3 -Wall
-# CC_FLAGS = $(I_CMD) -g -Wall
+# CC_FLAGS = $(I_CMD) -O3 -Wall
+CC_FLAGS = $(I_CMD) -g -Wall
 CP_FLAGS = $(CC_FLAGS) -std=c++0x
-CU_FLAGS = $(I_CMD) -O3 -arch sm_20
-# CU_FLAGS = $(I_CMD) -g -arch sm_20
+# CU_FLAGS = $(I_CMD) -O3 -arch sm_20
+CU_FLAGS = $(I_CMD) -g -arch sm_20
 LD_FLAGS = $(I_CMD) $(L_CMD) -lswsharp -lpthread -lm -lstdc++
 
 API = $(addprefix $(SRC_DIR)/, )

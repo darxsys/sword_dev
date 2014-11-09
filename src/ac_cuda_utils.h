@@ -14,7 +14,7 @@ typedef struct {
 } TableGpu;
 
 typedef struct {
-    char* codes;
+    char4* codes;
     int len;
 } ChainGpu;
 

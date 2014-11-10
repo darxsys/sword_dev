@@ -110,7 +110,7 @@ extern void* indicesTableCreateGpu(Chain** database,
     //**************************************************************************
     // INVOKE KERNEL
     int grid_x = automataLen;
-    int block_x = 32;
+    int block_x = 1;
 
     dim3 dimGrid(grid_x,1,1);
     // fprintf(stderr,"Automata len: %d\n", automataLen);
@@ -248,16 +248,16 @@ static void chainGpuCreate(Chain* chain, ChainGpu** chainD, ChainGpu** chainH) {
         if (rest >= 2) {
             codesH[len / 4].y = codes[len-rest + 1];
         } else {
-            codesH[len / 4].y = '\0';
+            codesH[len / 4].y = 0;
         }
 
         if (rest == 3) {
             codesH[len / 4].z = codes[len-rest + 2];
         } else {
-            codesH[len / 4].z = '\0';
+            codesH[len / 4].z = 0;
         }
 
-        codesH[len / 4].w = '\0';
+        codesH[len / 4].w = 0;
     }
 
     char4* codesD;
@@ -288,7 +288,6 @@ __global__ static void findCandidates(TableGpu** automata,
     int automataLen, ChainGpu** database, int databaseLen,
     int* candidates) {
 
-    __shared__ char codesShared[37000]; 
     int index = blockIdx.x;
     int candidatesSize = 0;
 
@@ -301,54 +300,64 @@ __global__ static void findCandidates(TableGpu** automata,
             int targetLen = database[i]->len;
             char4* codes = database[i]->codes;
 
-            if (index == 0 && threadIdx.x == 0) {
-                printf("Analyzing target %d\n", i);
-                printf("Target len %d\n", targetLen);
-            }
+            // if (index == 0 && threadIdx.x == 0) {
+                // printf("Analyzing target %d\n", i);
+                // printf("Target len %d\n", targetLen);
+            // }
 
             // copy codes to shared memory
-            char4 ch4;
+            // char4 ch4;
+            // for (int k = threadIdx.x; k < targetLen / 4; k += 32) {
+            //     ch4 = codes[k];
 
-            for (int k = threadIdx.x; k < targetLen / 4; k += 32) {
-                ch4 = codes[k];
+            //     // if (index == 0) {
+            //         // printf("Thread %d Current chars: %d\n", threadIdx.x, k);
+            //     // }
 
-                // if (index == 0) {
-                    // printf("Thread %d Current chars: %d\n", threadIdx.x, k);
-                // }
+            //     int j = k * 4;
 
-                int j = k * 4;
+            //     // if (index == 0) {
+            //     //     printf("Setting codesShared to %d\n", j);
+            //     // }
 
-                // if (index == 0) {
-                //     printf("Setting codesShared to %d\n", j);
-                // }
+            //     codesShared[j] = ch4.x;
+            //     codesShared[j+1] = ch4.y;
+            //     codesShared[j+2] = ch4.z;
+            //     codesShared[j+3] = ch4.w;
+            // }
 
-                codesShared[j] = ch4.x;
-                codesShared[j+1] = ch4.y;
-                codesShared[j+2] = ch4.z;
-                codesShared[j+3] = ch4.w;
-            }
+            // // read the rest
+            // if ((targetLen % 4) && threadIdx.x == 0) {
+            //     int k = targetLen % 4;
 
-            // read the rest
-            if ((targetLen % 4) && threadIdx.x == 0) {
-                int k = targetLen % 4;
+            //     codesShared[targetLen - k] = codes[targetLen / 4].x;
+            //     codesShared[targetLen - k + 1] = codes[targetLen / 4].y;
+            //     codesShared[targetLen - k + 2] = codes[targetLen / 4].z;
+            //     codesShared[targetLen - k + 3] = codes[targetLen / 4].w;
+            // } else {
 
-                codesShared[targetLen - k] = codes[targetLen / 4].x;
-                codesShared[targetLen - k + 1] = codes[targetLen / 4].y;
-                codesShared[targetLen - k + 2] = codes[targetLen / 4].z;
-                codesShared[targetLen - k + 3] = codes[targetLen / 4].w;
-            } 
+            // }
 
-            __syncthreads();
+            // __syncthreads();
 
             // do transitions on the automaton and fill the candidates
-            if (threadIdx.x == 0) {
-                int state = 0;
-                int numHits = 0;
+            // if (threadIdx.x == 0) {
+            int state = 0;
+            int numHits = 0;
+            char buff[4];
+            // printf("targetlen %d\n", targetLen);
+            int limit = targetLen % 4 ? targetLen / 4 + 1 : targetLen / 4;
+            // printf("limit %d\n", limit);
 
-                // printf("targetlen %d\n", targetLen);
-                for (int k = 0; k < targetLen; ++k) {
-                    char code = codesShared[k];
-                    // printf("Current code %d\n", code);
+            for (int k = 0; k < limit; ++k) {
+                char4 in = codes[k];
+                buff[0] = in.x;
+                buff[1] = in.y;
+                buff[2] = in.z;
+                buff[3] = in.w;
+                // printf("Current code %d\n", code);
+                for (int j = 0; j < 4; ++j) {
+                    char code = buff[j];
 
                     while(table[state * TABLE_WIDTH + code] == 0 && state != 0) {
                         state = table[state * TABLE_WIDTH + FAIL_COL];
@@ -362,18 +371,18 @@ __global__ static void findCandidates(TableGpu** automata,
                     if (table[state * TABLE_WIDTH + FINAL_COL]) {
                         numHits++;
                     }
-
                 }
 
-                if (numHits > 0) {
-                    candidates[index * 5001 + (candidatesSize % 5000 + 1)] = i;
-                    candidatesSize = min(candidatesSize + 1, 5000);
-                    // candidatesSize = candidatesSize + 1 > 5000 ? 5000 : candidatesSize + 1;
-                }
-                // printf("Thread id: %d num hits: %d\n", index, numHits);
             }
 
-            __syncthreads();
+            if (numHits > 0) {
+                candidates[index * 5001 + (candidatesSize % 5000 + 1)] = i;
+                candidatesSize = min(candidatesSize + 1, 5000);
+                // candidatesSize = candidatesSize + 1 > 5000 ? 5000 : candidatesSize + 1;
+            }
+                // printf("Thread id: %d num hits: %d\n", index, numHits);
+            // }
+            // __syncthreads();
         }
 
         // printf("Candidates size: %d\n", candidatesSize);

@@ -37,6 +37,10 @@ __global__ static void findCandidates(TableGpu** automata,
     int automataLen, ChainGpu** database, int databaseLen,
     int* candidates);
 
+__global__ static void findCandidatesBlocks(TableGpu** automata, 
+    int automatonIndex, ChainGpu** database, int databaseLen,
+    int numBlocks, int* candidates);
+
 // ***************************************************************************
 // PUBLIC
 extern void* indicesTableCreateGpu(Chain** database, 
@@ -109,16 +113,25 @@ extern void* indicesTableCreateGpu(Chain** database,
 
     //**************************************************************************
     // INVOKE KERNEL
-    int grid_x = automataLen;
-    int block_x = 1;
+    int grid_x = min(5000, databaseLen);
+    dim3 dimGrid(grid_x, 1, 1);
+    dim3 dimBlock(1, 1, 1);
 
-    dim3 dimGrid(grid_x,1,1);
-    // fprintf(stderr,"Automata len: %d\n", automataLen);
-    dim3 dimBlock(block_x,1,1);
+    for (int i = 0; i < automataLen; ++i) {
+        fprintf(stderr,"Invoking kernel\n");
+        
+        findCandidatesBlocks<<<dimGrid, dimBlock>>>(gpuTablesD, i, chainsGpuD,
+            databaseLen, grid_x, candidatesD);
+    }
 
-    fprintf(stderr,"Invoking kernel\n");
-    findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, chainsGpuD, 
-        numTargets, candidatesD);
+    // int grid_x = automataLen;
+    // int block_x = 1;
+
+    // dim3 dimGrid(grid_x,1,1);
+    // // fprintf(stderr,"Automata len: %d\n", automataLen);
+    // dim3 dimBlock(block_x,1,1);
+    // findCandidates<<<dimGrid, dimBlock>>>(gpuTablesD, automataLen, chainsGpuD, 
+    //     numTargets, candidatesD);
 
     CUDA_SAFE_CALL(cudaMemcpy(candidatesH, candidatesD, 
         sizeof(int) * 5001 * automataLen, FROM_GPU));
@@ -129,19 +142,32 @@ extern void* indicesTableCreateGpu(Chain** database,
     fprintf(stderr,"Extracting candidates\n");
     Candidates* candidates = new Candidates();
     candidates->reserve(automataLen);
+
     for (int i = 0; i < automataLen; ++i) {
         Candidate queryCandidates;
 
-        int size = candidatesH[i * 5001];
-        // fprintf(stderr,"Size: %d\n", size);
-        for (int j = 0; j < size; ++j) {
-            // fprintf(stderr,"Kandidat: %d\n", candidatesH[i * 5001 + j + 1]);
-            queryCandidates.push_back(candidatesH[i * 5001 + j + 1]);
-            // fprintf(stderr, "Candidate is: %d\n", candidatesH[i * 5001 + j + 1]);
+        for (int j = 0; j < grid_x; ++j) {
+            if (candidatesH[i * 5001 + j + 1] > -1) {
+                queryCandidates.push_back(candidatesH[i * 5001 +j + 1]);
+            }
         }
 
         candidates->push_back(queryCandidates);
     }
+
+    // for (int i = 0; i < automataLen; ++i) {
+    //     Candidate queryCandidates;
+
+    //     int size = candidatesH[i * 5001];
+    //     // fprintf(stderr,"Size: %d\n", size);
+    //     for (int j = 0; j < size; ++j) {
+    //         // fprintf(stderr,"Kandidat: %d\n", candidatesH[i * 5001 + j + 1]);
+    //         queryCandidates.push_back(candidatesH[i * 5001 + j + 1]);
+    //         // fprintf(stderr, "Candidate is: %d\n", candidatesH[i * 5001 + j + 1]);
+    //     }
+
+    //     candidates->push_back(queryCandidates);
+    // }
 
     free(candidatesH);
     fprintf(stderr,"Done\n");
@@ -388,6 +414,62 @@ __global__ static void findCandidates(TableGpu** automata,
         // printf("Candidates size: %d\n", candidatesSize);
         if (threadIdx.x == 0)
             candidates[index * 5001] = candidatesSize;
+    }
+}
+
+
+__global__ static void findCandidatesBlocks(TableGpu** automata, 
+    int automataIndex, ChainGpu** database, int databaseLen,
+    int numBlocks, int* candidates) {
+
+    int index = automataIndex;
+
+    candidates[index * 5001] = 0;
+    candidates[index * 5001 + 1 + blockIdx.x] = -1;
+    int* table = automata[index]->table;
+
+    for (int i = blockIdx.x; i < databaseLen; i += numBlocks) {
+        // printf("there is a db\n");
+        int targetLen = database[i]->len;
+        char4* codes = database[i]->codes;
+
+        // do transitions on the automaton and fill the candidates
+        int state = 0;
+        int numHits = 0;
+        char buff[4];
+        // printf("targetlen %d\n", targetLen);
+        int limit = targetLen % 4 ? targetLen / 4 + 1 : targetLen / 4;
+        // printf("limit %d\n", limit);
+
+        for (int k = 0; k < limit; ++k) {
+            char4 in = codes[k];
+            buff[0] = in.x;
+            buff[1] = in.y;
+            buff[2] = in.z;
+            buff[3] = in.w;
+            // printf("Current code %d\n", code);
+            for (int j = 0; j < 4; ++j) {
+                char code = buff[j];
+
+                while(table[state * TABLE_WIDTH + code] == 0 && state != 0) {
+                    state = table[state * TABLE_WIDTH + FAIL_COL];
+                }
+
+                if (state == table[state * TABLE_WIDTH + code]) {
+                    continue;
+                }
+
+                state = table[state * TABLE_WIDTH + code];
+                if (table[state * TABLE_WIDTH + FINAL_COL]) {
+                    numHits++;
+                }
+            }
+
+        }
+
+        if (numHits > 0) {
+            candidates[index * 5001 + 1 + blockIdx.x] = i;
+        }
     }
 }
 

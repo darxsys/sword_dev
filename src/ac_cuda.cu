@@ -114,7 +114,8 @@ extern void* indicesTableCreateGpu(Chain** database,
 
     //**************************************************************************
     // INVOKE KERNEL
-    int grid_x = min(5000, databaseLen);
+    // int grid_x = min(5000, databaseLen);
+    int grid_x = 600000;
     dim3 dimGrid(grid_x, 1, 1);
     dim3 dimBlock(1, 1, 1);
 
@@ -148,7 +149,7 @@ extern void* indicesTableCreateGpu(Chain** database,
     for (int i = 0; i < automataLen; ++i) {
         Candidate queryCandidates;
 
-        for (int j = 0; j < grid_x; ++j) {
+        for (int j = 0; j < 5000; ++j) {
             if (candidatesH[i * 5001 + j + 1] > -1) {
                 queryCandidates.push_back(candidatesH[i * 5001 +j + 1]);
             }
@@ -429,7 +430,7 @@ __global__ static void findCandidatesBlocks(TableGpu** automata,
     int index = automataIndex;
 
     candidates[index * 5001] = 0;
-    candidates[index * 5001 + 1 + blockIdx.x] = -1;
+    candidates[index * 5001 + 1 + (blockIdx.x % 5000)] = -1;
     int* table = automata[index]->table;
 
     for (int i = blockIdx.x; i < databaseLen; i += numBlocks) {
@@ -472,7 +473,7 @@ __global__ static void findCandidatesBlocks(TableGpu** automata,
         }
 
         if (numHits > 0) {
-            candidates[index * 5001 + 1 + blockIdx.x] = i;
+            candidates[index * 5001 + 1 + (blockIdx.x % 5000)] = i;
         }
     }
 }

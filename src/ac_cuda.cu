@@ -13,6 +13,7 @@ using namespace std;
 #include "table_node.h"
 #include "ac_table.h"
 #include "ac_cuda_utils.h"
+#include "timer.h"
 
 // ***************************************************************************
 // PUBLIC
@@ -124,6 +125,8 @@ extern void* indicesTableCreateGpu(Chain** database,
             databaseLen, grid_x, candidatesD);
     }
 
+    CUDA_SAFE_CALL(cudaDeviceSynchronize());
+
     // int grid_x = automataLen;
     // int block_x = 1;
 
@@ -135,7 +138,6 @@ extern void* indicesTableCreateGpu(Chain** database,
 
     CUDA_SAFE_CALL(cudaMemcpy(candidatesH, candidatesD, 
         sizeof(int) * 5001 * automataLen, FROM_GPU));
-
     //**************************************************************************
     // EXTRACT CANDIDATES
 

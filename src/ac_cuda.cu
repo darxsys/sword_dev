@@ -297,6 +297,8 @@ static void chainGpuCreate(Chain* chain, ChainGpu** chainD, ChainGpu** chainH) {
 
     CUDA_SAFE_CALL(cudaMalloc(chainD, sizeof(ChainGpu)));
     CUDA_SAFE_CALL(cudaMemcpy(*chainD, *chainH, sizeof(ChainGpu), TO_GPU));
+
+    free(codesH);
 }
 
 static void chainGpuDelete(ChainGpu* chainD, ChainGpu* chainH) {

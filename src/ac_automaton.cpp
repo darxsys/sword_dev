@@ -45,6 +45,10 @@ static void automatonDelete(ACNode* root);
 static int automatonTargetHits(ACNode* automaton, int automatonIdx,
     Chain* target, int seedLen);
 
+static void automatonOneTargetHits(ACNode* automaton, int queriesLen, Chain* target, 
+    int targetIdx, int seedLen, Candidates* candidates);
+
+
 static int seedCode(Chain* chain, int pos, int seedLen);
 
 static void databaseStatistics(Candidates* candidates, 
@@ -65,12 +69,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     Candidates* candidates = new Candidates();
 
-    Timeval queryTimeval;
-    static long long usec = 0;
-
     fprintf(stderr, "Num queries: %u\n", aut->size());
-
-    Timeval hits;
 
     for (int i = 0; i < aut->size(); ++i) {
 
@@ -79,17 +78,12 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
         for (int j = databaseStart; j < databaseLen; ++j) {
             Chain* target = database[j];
-            // TODO: (querypos, targetpos, seedcode) 
-            // newline for every (query, target)
-            // timerStart(&hits);
             int numHits = automatonTargetHits(automaton, i, target, seedLen);
-            // usecHits += timerStop(&hits);
 
             if (numHits > 0) {
                 queryCandidates.push_back(j);
             }
 
-            // printf("\n");
         }
 
         (*candidates).push_back(queryCandidates);
@@ -97,11 +91,6 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
     // for every query, output database reduction and then average database reduction
     databaseStatistics(candidates, queriesLen, databaseLen);
-
-    // timerPrint("Hits", usecHits);
-    // timerPrint("Transitions", tsec);
-    // timerPrint("Hit count", hsec);    
-
     return candidates;
 }
 
@@ -122,21 +111,17 @@ extern void* automatonOneGetCandidates(Chain** database,
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     ACNode* automaton = (*aut)[0];
 
-    vector<short> queryFlags(queriesLen, 0);
-
     Candidates* candidates = new Candidates();
     Candidate queryCandidates;
     candidates->insert(candidates->begin(), queriesLen, queryCandidates);
 
+    for (int i = databaseStart; i < databaseLen; ++i) {
+        Chain* target = database[i];
+        automatonOneTargetHits(automaton, queriesLen, 
+            target, i, seedLen, candidates);
+    }
 
-
-
-
-
-
-
-
-
+    return static_cast<void*>(candidates);
 }
 
 extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen) {
@@ -182,16 +167,11 @@ static int automatonTargetHits(ACNode* automaton, int automatonIdx,
 
     ACNode* state = automaton;
     int targetLen = chainGetLength(target);
-
     int numHits = 0;
-
-    Timeval transitions;
-    Timeval hits;
 
     for (int i = 0; i < targetLen; ++i) {
         char c = toupper(chainGetChar(target, i));
 
-        // timerStart(&transitions);
         while (!state->edge[c-'A']) {
             state = state->fail;
         }
@@ -201,22 +181,51 @@ static int automatonTargetHits(ACNode* automaton, int automatonIdx,
         }
 
         state = state->edge[c-'A'];
-        // tsec += timerStop(&transitions);
 
-        // timerStart(&hits);
         if (state->size) {
-            // int code = seedCode(target, i - seedLen + 1, seedLen);
             for (unsigned int j = 0; j < state->positions.size(); ++j) {
                 if (state->positions[j].queryIdx == automatonIdx)
                     numHits++;
-                // fprintf(stderr, "%d %d %d\n", state->positions[j], i - seedLen + 1, code);
             }
         }
-
-        // hsec += timerStop(&hits);
     }
 
     return numHits;
+}
+
+static void automatonOneTargetHits(ACNode* automaton, int queriesLen, Chain* target, 
+    int targetIdx, int seedLen, Candidates* candidates) {
+
+    vector<short> flags(queriesLen, 0);
+    ACNode* state = automaton;
+    int targetLen = chainGetLength(target);
+    int numHits = 0;
+
+    for (int i = 0; i < targetLen; ++i) {
+        char c = toupper(chainGetChar(target, i)) - 'A';
+
+        while (!state->edge[c]) {
+            state = state->fail;
+        }
+
+        if (state->edge[c] == state) {
+            continue;
+        }
+
+        state = state->edge[c];
+
+        if (state->size) {
+            int query;
+            for (unsigned int j = 0; j < state->positions.size(); ++j) {
+                query = state->positions[j].queryIdx;
+
+                if (!flags[query]) {
+                    (*candidates)[query].push_back(targetIdx);
+                    flags[query] = 1;
+                }
+            }
+        }
+    }
 }
 
 
@@ -345,7 +354,6 @@ static void automatonDelete(ACNode* root) {
         delete curr;
     }
 
-    root->positions.clear();
     delete root;
 }
 

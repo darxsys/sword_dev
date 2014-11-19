@@ -20,9 +20,10 @@ using namespace std;
 
 extern void* partialIndicesAutomatonCreate(Chain** database, 
     int databaseStart, int databaseLen, void* automata,
-    int automataLen, int seedLen, Scorer* scorer);
+    int queriesLen, int seedLen, Scorer* scorer);
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
+extern void* automatonCreateAllInOne(int seedLen, Chain** queries, int queriesLen);
 extern void automatonDeleteAutomata(void* automata, int automataLen);
 
 // ***************************************************************************
@@ -35,13 +36,14 @@ typedef vector<int> Candidate;
 static void extractSeed(Chain* query, int pos, int len, char** output);
 
 static void automatonAddWord(ACNode* root, char* word, int wordLen, 
-    int location);
+    int location, int queryIdx);
 static void automatonSetSupply(ACNode* root);
 
-static ACNode* automatonCreate(int seedLen, Chain* query);
+static ACNode* automatonCreate(int seedLen, Chain* query, int queryIdx);
 static void automatonDelete(ACNode* root);
 
-static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen);
+static int automatonTargetHits(ACNode* automaton, int automatonIdx,
+    Chain* target, int seedLen);
 
 static int seedCode(Chain* chain, int pos, int seedLen);
 
@@ -58,7 +60,7 @@ static long long hsec = 0;
 
 extern void* partialIndicesAutomatonCreate(Chain** database,
     int databaseStart, int databaseLen, void* automata,
-    int automataLen, int seedLen, Scorer* scorer) {
+    int queriesLen, int seedLen, Scorer* scorer) {
 
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     Candidates* candidates = new Candidates();
@@ -80,7 +82,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
             // TODO: (querypos, targetpos, seedcode) 
             // newline for every (query, target)
             // timerStart(&hits);
-            int numHits = automatonTargetHits(automaton, target, seedLen);
+            int numHits = automatonTargetHits(automaton, i, target, seedLen);
             // usecHits += timerStop(&hits);
 
             if (numHits > 0) {
@@ -94,7 +96,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
     }
 
     // for every query, output database reduction and then average database reduction
-    databaseStatistics(candidates, automataLen, databaseLen);
+    databaseStatistics(candidates, queriesLen, databaseLen);
 
     // timerPrint("Hits", usecHits);
     // timerPrint("Transitions", tsec);
@@ -107,9 +109,58 @@ extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLe
     vector<ACNode*>* automata = new vector<ACNode*>;
 
     for (int i = 0; i < queriesLen; ++i) {
-        automata->push_back(automatonCreate(seedLen, queries[i]));
+        automata->push_back(automatonCreate(seedLen, queries[i], i));
     }
 
+    return static_cast<void*>(automata);
+}
+
+extern void* automatonOneGetCandidates(Chain** database, 
+    int databaseStart, int databaseLen, void* automata,
+    int queriesLen, int seedLen, Scorer* scorer) {
+
+    vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
+    ACNode* automaton = (*aut)[0];
+
+    vector<short> queryFlags(queriesLen, 0);
+
+    Candidates* candidates = new Candidates();
+    Candidate queryCandidates;
+    candidates->insert(candidates->begin(), queriesLen, queryCandidates);
+
+
+
+
+
+
+
+
+
+
+}
+
+extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen) {
+    vector<ACNode*>* automata = new vector<ACNode*>;
+    ACNode* root = new ACNode();
+    root->size = 0;
+    char* seed = new char[seedLen+1];
+
+    for (int i = 0; i < queriesLen; ++i) {
+
+        // first create a trie by sampling the query
+        int queryLen = chainGetLength(queries[i]);
+
+        // find all the seeds in the query and add them to the automaton
+        for (int j = 0; j < queryLen - seedLen + 1; ++j) {
+            extractSeed(queries[i], j, seedLen, &seed);
+            automatonAddWord(root, seed, seedLen, j, i);
+        }
+    }
+
+    automatonSetSupply(root);
+    automata->push_back(root);
+
+    delete[] seed;
     return static_cast<void*>(automata);
 }
 
@@ -126,7 +177,8 @@ extern void automatonDeleteAutomata(void* automata, int automataLen) {
 
 // ***************************************************************************
 // PRIVATE
-static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
+static int automatonTargetHits(ACNode* automaton, int automatonIdx, 
+    Chain* target, int seedLen) {
 
     ACNode* state = automaton;
     int targetLen = chainGetLength(target);
@@ -155,7 +207,8 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
         if (state->size) {
             // int code = seedCode(target, i - seedLen + 1, seedLen);
             for (unsigned int j = 0; j < state->positions.size(); ++j) {
-                numHits++;
+                if (state->positions[j].queryIdx == automatonIdx)
+                    numHits++;
                 // fprintf(stderr, "%d %d %d\n", state->positions[j], i - seedLen + 1, code);
             }
         }
@@ -167,7 +220,7 @@ static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
 }
 
 
-static ACNode* automatonCreate(int seedLen, Chain* query) {
+static ACNode* automatonCreate(int seedLen, Chain* query, int queryIdx) {
     ACNode* root = new ACNode();
     root->size = 0;
 
@@ -179,7 +232,7 @@ static ACNode* automatonCreate(int seedLen, Chain* query) {
     for (int i = 0; i < queryLen - seedLen + 1; ++i) {
         extractSeed(query, i, seedLen, &seed);
 
-        automatonAddWord(root, seed, seedLen, i);
+        automatonAddWord(root, seed, seedLen, i, queryIdx);
     }
 
     // now find all the supply links
@@ -200,7 +253,7 @@ static void extractSeed(Chain* query, int pos, int len, char** output) {
 }
 
 static void automatonAddWord(ACNode* root, char* word, int wordLen, 
-    int location) {
+    int location, int queryIdx) {
 
     ACNode* q = root;
 
@@ -217,7 +270,11 @@ static void automatonAddWord(ACNode* root, char* word, int wordLen,
     }
 
     q->size = 1;
-    q->positions.push_back(location);
+
+    Position p;
+    p.queryIdx = queryIdx;
+    p.location = location;
+    q->positions.push_back(p);
 }
 
 static void automatonSetSupply(ACNode* root) {
@@ -288,6 +345,7 @@ static void automatonDelete(ACNode* root) {
         delete curr;
     }
 
+    root->positions.clear();
     delete root;
 }
 

@@ -16,11 +16,16 @@
 
 typedef unsigned short uint16;
 
+typedef struct {
+    int queryIdx;
+    int location;
+} Position;
+
 typedef struct AhoCorasick {
     int size;
     AhoCorasick* fail;
     AhoCorasick* edge[26];
-    std::vector<uint16> positions;
+    std::vector<Position> positions;
 
     AhoCorasick() {
         for (int i = 0; i < 26; ++i) {

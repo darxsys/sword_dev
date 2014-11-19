@@ -280,7 +280,8 @@ int main(int argc, char* argv[]) {
             Timeval start;
             timerStart(&start);
 
-            automata = automatonCreateTables(seedLen, queries, queriesLen);
+            // automata = automatonCreateTables(seedLen, queries, queriesLen);
+            automata = automatonCreateAutomata(seedLen, queries, queriesLen);
             long long usec = timerStop(&start);
 
             timerPrint("Automaton creation time", usec);
@@ -310,17 +311,25 @@ int main(int argc, char* argv[]) {
             if (useAutomata) {
                 fprintf(stderr, "Automata test\n");
                 timerStart(&automataTimer);
-                //indices = partialIndicesTableCreate(database,
-                  //  databaseStart, databaseLen, automata, queriesLen, 
-                    //seedLen, scorer);
-                indices = indicesTableCreateGpu(database,
-                    databaseStart, databaseLen, automata, queriesLen, 
+
+                indices = partialIndicesAutomatonCreate(database,
+                   databaseStart, databaseLen, automata, queriesLen, 
                     seedLen, scorer);
+
+
+                // indices = partialIndicesTableCreate(database,
+                //    databaseStart, databaseLen, automata, queriesLen, 
+                //     seedLen, scorer);
+                // indices = indicesTableCreateGpu(database,
+                //     databaseStart, databaseLen, automata, queriesLen, 
+                //     seedLen, scorer);
 
                 // fprintf(stderr, "Indices extracted\n");
 
                 automataTime += timerStop(&automataTimer);
                 timerPrint("Automaton test took", automataTime);
+
+                return 0;
             }
 
             for (i = 0; i < queriesLen; ++i) {

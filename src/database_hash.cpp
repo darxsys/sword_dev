@@ -478,7 +478,7 @@ static void* scoreSequences(void* param) {
 
                 if (state->positions.size() > 0) {
                     for (i = 0; i < state->positions.size(); ++i) {
-                        qstart = state->positions[i];
+                        qstart = state->positions[i].location;
                         tstart = k - seedLen + 1;
 
                         d = ((tstart - qstart + dLen) % dLen);

@@ -86,6 +86,11 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
         }
 
+        // fprintf(stderr, "Candidates for query: %d\n", i);
+        // for (int j = 0; j < queryCandidates.size(); ++j) {
+        //     fprintf(stderr, "cand: %d\n", queryCandidates[j]);
+        // }
+
         (*candidates).push_back(queryCandidates);
     }
 
@@ -120,6 +125,10 @@ extern void* automatonOneGetCandidates(Chain** database,
         automatonOneTargetHits(automaton, queriesLen, 
             target, i, seedLen, candidates);
     }
+
+    // for (int i = 0; i < (*candidates)[314].size(); ++i){
+    //     fprintf(stderr, "cand: %d\n", (*candidates)[314][i]);
+    // }
 
     return static_cast<void*>(candidates);
 }

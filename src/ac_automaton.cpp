@@ -33,6 +33,9 @@ extern void automatonDeleteAutomata(void* automata, int automataLen);
 typedef vector<vector<int> > Candidates;
 typedef vector<int> Candidate;
 
+typedef vector<vector<Hit> > CandidatesHit;
+typedef vector<Hit> CandidateHit;
+
 static void extractSeed(Chain* query, int pos, int len, char** output);
 
 static void automatonAddWord(ACNode* root, char* word, int wordLen, 
@@ -47,6 +50,9 @@ static int automatonTargetHits(ACNode* automaton, int automatonIdx,
 
 static void automatonOneTargetHits(ACNode* automaton, int queriesLen, Chain* target, 
     int targetIdx, int seedLen, Candidates* candidates);
+
+static void automatonOneTripletHits(ACNode* automaton, int queriesLen, Chain* target, 
+    int targetIdx, int seedLen, CandidatesHit* candidates);
 
 
 static int seedCode(Chain* chain, int pos, int seedLen);
@@ -116,13 +122,17 @@ extern void* automatonOneGetCandidates(Chain** database,
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
     ACNode* automaton = (*aut)[0];
 
-    Candidates* candidates = new Candidates();
-    Candidate queryCandidates;
+    // Candidates* candidates = new Candidates();
+    // Candidate queryCandidates;
+    // candidates->insert(candidates->begin(), queriesLen, queryCandidates);
+
+    CandidatesHit* candidates = new CandidatesHit();
+    CandidateHit queryCandidates;
     candidates->insert(candidates->begin(), queriesLen, queryCandidates);
 
     for (int i = databaseStart; i < databaseLen; ++i) {
         Chain* target = database[i];
-        automatonOneTargetHits(automaton, queriesLen, 
+        automatonOneTripletHits(automaton, queriesLen, 
             target, i, seedLen, candidates);
     }
 
@@ -232,6 +242,42 @@ static void automatonOneTargetHits(ACNode* automaton, int queriesLen, Chain* tar
                     (*candidates)[query].push_back(targetIdx);
                     flags[query] = 1;
                 }
+            }
+        }
+    }
+}
+
+static void automatonOneTripletHits(ACNode* automaton, int queriesLen, Chain* target, 
+    int targetIdx, int seedLen, CandidatesHit* candidates) {
+
+    vector<short> flags(queriesLen, 0);
+    ACNode* state = automaton;
+    int targetLen = chainGetLength(target);
+    int numHits = 0;
+
+    for (int i = 0; i < targetLen; ++i) {
+        char c = toupper(chainGetChar(target, i)) - 'A';
+
+        while (!state->edge[c]) {
+            state = state->fail;
+        }
+
+        if (state->edge[c] == state) {
+            continue;
+        }
+
+        state = state->edge[c];
+
+        if (state->size) {
+            int query;
+            int queryPos;
+            for (unsigned int j = 0; j < state->positions.size(); ++j) {
+                query = state->positions[j].queryIdx;
+                if (flags[query])  continue;
+
+                queryPos = state->positions[j].location;
+                (*candidates)[query].emplace_back(targetIdx, i, queryPos);
+                flags[query] = 1;                
             }
         }
     }

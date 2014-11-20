@@ -21,6 +21,16 @@ typedef struct {
     int location;
 } Position;
 
+typedef struct Hit {
+    int tIdx;
+    uint16 tpos;
+    uint16 qpos;
+
+    Hit(int tIdx_, uint16 tpos_, uint16 qpos_) :
+        tIdx(tIdx_), tpos(tpos_), qpos(qpos_) {
+    }
+} Hit;
+
 typedef struct AhoCorasick {
     int size;
     AhoCorasick* fail;

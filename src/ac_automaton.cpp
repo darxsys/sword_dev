@@ -140,7 +140,14 @@ extern void* automatonOneGetCandidates(Chain** database,
     //     fprintf(stderr, "cand: %d\n", (*candidates)[314][i]);
     // }
 
-    return static_cast<void*>(candidates);
+    for (int i = 0; i < candidates->size(); ++i) {
+        (*candidates)[i].clear();
+    }
+
+    delete candidates;
+
+    // return static_cast<void*>(candidates);
+    return NULL;
 }
 
 extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen) {
@@ -273,11 +280,11 @@ static void automatonOneTripletHits(ACNode* automaton, int queriesLen, Chain* ta
             int queryPos;
             for (unsigned int j = 0; j < state->positions.size(); ++j) {
                 query = state->positions[j].queryIdx;
-                if (flags[query])  continue;
-
                 queryPos = state->positions[j].location;
+
+                // fprintf(stderr, "query querypos %d %d", query, queryPos);
+
                 (*candidates)[query].emplace_back(targetIdx, i, queryPos);
-                flags[query] = 1;                
             }
         }
     }

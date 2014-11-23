@@ -1,4 +1,0 @@
-swsharp
-=======
-
-BLAST killer.

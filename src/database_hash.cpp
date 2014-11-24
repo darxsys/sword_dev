@@ -161,6 +161,7 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
     // **********
 
+    timerStart(&heuristicTimer);
     timerStart(&initTimer);
 
     Data* indices = NULL;

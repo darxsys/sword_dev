@@ -152,8 +152,16 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Chain** queries, int queriesLen, int seedLen, int maxCandidates,
     int permute, Scorer* scorer) {
 
-    // Timeval timerc;
-    // timerStart(&timerc);
+    // **********
+
+    Timeval heuristicTimer, initTimer, seedScoresTimer, seedsTimer,
+        deleteTimer;
+    long long heuristicTotal = 0, initTotal = 0, seedScoresTotal = 0,
+        seedsTotal = 0, deleteTotal = 0;
+
+    // **********
+
+    timerStart(&initTimer);
 
     Data* indices = NULL;
     dataCreate(&indices, queriesLen);
@@ -161,12 +169,21 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Candidates* candidates = NULL;
     candidatesCreate(&candidates, queriesLen);
 
+    initTotal += timerStop(&initTimer);
+    timerStart(&seedScoresTimer);
+
     int* seedScores;
     int seedScoresLen;
     seedScoresCreate(&seedScores, &seedScoresLen, seedLen, scorer);
 
+    seedScoresTotal += timerStop(&seedScoresTimer);
+    timerStart(&seedsTimer);
+
     Seeds* seeds = NULL;
     seedsCreate(&seeds, seedLen, permute, scorer);
+
+    seedsTotal += timerStop(&seedsTimer);
+    timerStart(&initTimer);
 
     int threadLen = 8;
     int threadTaskLen = queriesLen / threadLen;
@@ -179,9 +196,7 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
         hAlignmentsCreate(&halignments[i], hAlignmentsLen);
     }
 
-    long long time_ = 0;
-    Timeval heTimer;
-    timerStart(&heTimer);
+    initTotal += timerStop(&initTimer);
 
     for (int i = 0; i < threadLen; ++i) {
 
@@ -216,6 +231,8 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
         threadPoolTaskDelete(threadTasks[i]);
     }
 
+    timerStart(&deleteTimer);
+
     for (int i = 0; i < threadLen; ++i) {
         hAlignmentsDelete(halignments[i]);
     }
@@ -229,8 +246,14 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
     candidatesDelete(candidates);
 
-    time_ = timerStop(&heTimer);
-    timerPrint("heuristicPart", time_);
+    deleteTotal += timerStop(&deleteTimer);
+    heuristicTotal += timerStop(&heuristicTimer);
+    
+    timerPrint("heuristicTime", heuristicTotal);
+    timerPrint("  initTime", initTotal);
+    timerPrint("  seedScoresTime", seedScoresTotal);
+    timerPrint("  seedsTime", seedsTotal);
+    timerPrint("  deleteTime", deleteTotal);
 
     return static_cast<void*>(indices);
 }

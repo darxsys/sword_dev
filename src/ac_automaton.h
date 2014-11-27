@@ -13,6 +13,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
     int queriesLen, int seedLen, Scorer* scorer);
 
 // This function is applicable when all queries are in one automaton
+// Works for grouped automata too
 extern void* automatonOneGetCandidates(Chain** database, 
     int databaseStart, int databaseLen, void* automata,
     int queriesLen, int seedLen, Scorer* scorer);
@@ -20,6 +21,8 @@ extern void* automatonOneGetCandidates(Chain** database,
 
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
 extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen);
+extern void* automatonCreateGroups(int seedLen, Chain** queries, 
+    int queriesLen, int groupSize);
 extern void automatonDeleteAutomata(void* automata, int automataLen);
 
 #ifdef __cplusplus    

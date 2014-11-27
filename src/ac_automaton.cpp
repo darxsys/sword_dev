@@ -22,8 +22,16 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
     int databaseStart, int databaseLen, void* automata,
     int queriesLen, int seedLen, Scorer* scorer);
 
+// This function is applicable when all queries are in one automaton
+// Works for grouped automata too
+extern void* automatonOneGetCandidates(Chain** database, 
+    int databaseStart, int databaseLen, void* automata,
+    int queriesLen, int seedLen, Scorer* scorer);
+
 extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
-extern void* automatonCreateAllInOne(int seedLen, Chain** queries, int queriesLen);
+extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen);
+extern void* automatonCreateGroups(int seedLen, Chain** queries, 
+    int queriesLen, int groupSize);
 extern void automatonDeleteAutomata(void* automata, int automataLen);
 
 // ***************************************************************************
@@ -120,34 +128,28 @@ extern void* automatonOneGetCandidates(Chain** database,
     int queriesLen, int seedLen, Scorer* scorer) {
 
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
-    ACNode* automaton = (*aut)[0];
 
-    // Candidates* candidates = new Candidates();
-    // Candidate queryCandidates;
-    // candidates->insert(candidates->begin(), queriesLen, queryCandidates);
-
-    CandidatesHit* candidates = new CandidatesHit();
-    CandidateHit queryCandidates;
+    Candidates* candidates = new Candidates();
+    Candidate queryCandidates;
     candidates->insert(candidates->begin(), queriesLen, queryCandidates);
+
+    // CandidatesHit* candidates = new CandidatesHit();
+    // CandidateHit queryCandidates;
+    // candidates->insert(candidates->begin(), queriesLen, queryCandidates);
 
     for (int i = databaseStart; i < databaseLen; ++i) {
         Chain* target = database[i];
-        automatonOneTripletHits(automaton, queriesLen, 
-            target, i, seedLen, candidates);
+        for (int j = 0; j < aut->size(); ++j) {
+            ACNode* automaton = (*aut)[j];
+
+            automatonOneTargetHits(automaton, queriesLen, 
+                target, i, seedLen, candidates);
+        }
     }
+    // delete candidates;
 
-    // for (int i = 0; i < (*candidates)[314].size(); ++i){
-    //     fprintf(stderr, "cand: %d\n", (*candidates)[314][i]);
-    // }
-
-    for (int i = 0; i < candidates->size(); ++i) {
-        (*candidates)[i].clear();
-    }
-
-    delete candidates;
-
-    // return static_cast<void*>(candidates);
-    return NULL;
+    return static_cast<void*>(candidates);
+    // return NULL;
 }
 
 extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen) {
@@ -175,9 +177,60 @@ extern void* automatonCreateOne(int seedLen, Chain** queries, int queriesLen) {
     return static_cast<void*>(automata);
 }
 
+extern void* automatonCreateGroups(int seedLen, Chain** queries, 
+    int queriesLen, int groupSize) {
+
+    vector<ACNode*>* automata = new vector<ACNode*>;
+    ACNode* root;
+    char* seed = new char[seedLen+1];
+
+    for (int i = groupSize; i < queriesLen; i += groupSize) {
+        root = new ACNode();
+        root->size = 0;
+        for (int j = i - groupSize; j < i; ++j) {
+            int queryLen = chainGetLength(queries[j]);
+
+            // find all the seeds in the query and add them to the automaton
+            for (int k = 0; k < queryLen - seedLen + 1; ++k) {
+                extractSeed(queries[j], k, seedLen, &seed);
+                automatonAddWord(root, seed, seedLen, k, j);
+            }
+            
+        }
+
+        automatonSetSupply(root);
+        automata->push_back(root);
+        // first create a trie by sampling the query
+    }
+
+    if (queriesLen % groupSize) {
+        root = new ACNode();
+        root->size = 0;
+
+        for (int i = queriesLen - queriesLen % groupSize; i < queriesLen; ++i) {
+            int queryLen = chainGetLength(queries[i]);
+
+            // find all the seeds in the query and add them to the automaton
+            for (int j = 0; j < queryLen - seedLen + 1; ++j) {
+                extractSeed(queries[i], j, seedLen, &seed);
+                automatonAddWord(root, seed, seedLen, j, i);
+            }
+        }
+
+        automatonSetSupply(root);
+        automata->push_back(root);
+    }
+    
+
+    delete[] seed;
+    return static_cast<void*>(automata);
+}
+
 extern void automatonDeleteAutomata(void* automata, int automataLen) {
+
     vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
-    for (int i = 0; i < automataLen; ++i) {
+
+    for (int i = 0; i < aut->size(); ++i) {
         automatonDelete((*aut)[i]);
      }
 

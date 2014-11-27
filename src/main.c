@@ -282,7 +282,8 @@ int main(int argc, char* argv[]) {
 
             // automata = automatonCreateTables(seedLen, queries, queriesLen);
             // automata = automatonCreateAutomata(seedLen, queries, queriesLen);
-            automata = automatonCreateOne(seedLen, queries, queriesLen);
+            // automata = automatonCreateOne(seedLen, queries, queriesLen);
+            automata = automatonCreateGroups(seedLen, queries, queriesLen, 10);
             long long usec = timerStop(&start);
 
             timerPrint("Automaton creation time", usec);

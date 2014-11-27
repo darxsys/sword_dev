@@ -83,7 +83,7 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
             int numHits = automatonTargetHits(automaton, target, seedLen);
             // usecHits += timerStop(&hits);
 
-            if (numHits > 0) {
+            if (numHits > 1) {
                 queryCandidates.push_back(j);
             }
 

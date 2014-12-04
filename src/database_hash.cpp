@@ -461,8 +461,9 @@ static void* findIndices(void* param) {
                     //
                     //  P.S. the first element in the positions array is a seedCode!
 
-                    int diag = (k - seedLen + 1 - location + dLen) % dLen;
+                    int diag;
                     for (int queryLocs = 1; queryLocs < state->positions.size(); ++queryLocs) {
+                        diag = (k - seedLen + 1 - location + dLen) % dLen;
                         int location = state->positions[queryLocs];
 
                         diagScores[diag]++;

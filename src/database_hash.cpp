@@ -430,7 +430,11 @@ static void* findIndices(void* param) {
 
             int dLen = queryLen + targetLen - 2 * seedLen + 1;
 
-            memset(diagScores, 0, sizeof(int) * dLen);
+            // memset(diagScores, 0, sizeof(int) * dLen);
+            for (int i = 0; i < dLen; ++i) {
+                diagScores[i] = 0;
+            }
+
             timerStart(&automatonTimer);
 
             int maxScore = 0;
@@ -457,10 +461,10 @@ static void* findIndices(void* param) {
                     //
                     //  P.S. the first element in the positions array is a seedCode!
 
+                    int diag = (k - seedLen + 1 - location + dLen) % dLen;
                     for (int queryLocs = 1; queryLocs < state->positions.size(); ++queryLocs) {
-                        int location = (*state->positions)[queryLocs];
+                        int location = state->positions[queryLocs];
 
-                        int diag = (k - location + dLen) % dLen;
                         diagScores[diag]++;
 
                         if (diagScores[diag] > maxScore) {

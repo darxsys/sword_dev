@@ -463,8 +463,8 @@ static void* findIndices(void* param) {
 
                     int diag;
                     for (int queryLocs = 1; queryLocs < state->positions.size(); ++queryLocs) {
-                        diag = (k - seedLen + 1 - location + dLen) % dLen;
                         int location = state->positions[queryLocs];
+                        diag = (k - seedLen + 1 - location + dLen) % dLen;
 
                         diagScores[diag]++;
 

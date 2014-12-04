@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #include <vector>
@@ -395,8 +396,10 @@ static void* findIndices(void* param) {
     Data* indices = threadData->indices;
 
     //
-    // Craete your structures here or in loop
+    // Create your structures here or in loop
     //
+
+    int* diagScores = new int[90000];
 
     initTotal += timerStop(&initTimer);
 
@@ -427,7 +430,10 @@ static void* findIndices(void* param) {
 
             int dLen = queryLen + targetLen - 2 * seedLen + 1;
 
+            memset(diagScores, 0, sizeof(int) * dLen);
             timerStart(&automatonTimer);
+
+            int maxScore = 0;
 
             for (int k = 0; k < targetLen; ++k) {
                 int c = static_cast<int>(tcodes[k]);
@@ -450,6 +456,19 @@ static void* findIndices(void* param) {
                     //     Create a candidate with the maximum sum as (sum, targetIdx)
                     //
                     //  P.S. the first element in the positions array is a seedCode!
+
+                    for (int queryLocs = 1; queryLocs < state->positions.size(); ++queryLocs) {
+                        int location = (*state->positions)[queryLocs];
+
+                        int diag = (k - location + dLen) % dLen;
+                        diagScores[diag]++;
+
+                        if (diagScores[diag] > maxScore) {
+                            maxScore = diag;
+                        }
+                    }
+
+
                 }
             }
 
@@ -459,7 +478,7 @@ static void* findIndices(void* param) {
             //
             // Find the maximum count or score
             //
-            int score = 0;
+            int score = maxScore;
 
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
                 (*candidates)[queryIdx].emplace_back(score, targetIdx);
@@ -521,6 +540,7 @@ static void* findIndices(void* param) {
     }
 
     delete threadData;
+    delete[] diagScores;
 
     threadTotal += timerStop(&threadTimer);
 

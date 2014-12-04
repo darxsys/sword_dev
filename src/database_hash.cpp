@@ -35,13 +35,6 @@ using namespace std;
 
 typedef unsigned short uint16;
 
-typedef struct {
-    int qstart;
-    int qend;
-    int tstart;
-    int score;
-} HAlignment;
-
 struct Candidate {
     int score;
     int idx;
@@ -51,21 +44,10 @@ struct Candidate {
     }
 };
 
-struct Hit {
-    int tstart;
-    vector<uint16>* qstarts;
-
-    Hit(int tstart_, vector<uint16>* qstarts_) :
-        tstart(tstart_), qstarts(qstarts_) {
-    }
-};
-
 typedef struct Candidate Candidate;
-typedef struct Hit Hit;
 
 typedef vector<vector<int> > Data;
 typedef vector<vector<Candidate> > Candidates;
-typedef vector<HAlignment> HAlignments;
 
 typedef struct {
     int taskStart;
@@ -79,8 +61,6 @@ typedef struct {
     Chain** queries;
     int* seedScores;
     Seeds* seeds;
-    Scorer* scorer;
-    HAlignments* halignments;
     Candidates* candidates;
     Data* indices;
 } ThreadData;
@@ -133,16 +113,6 @@ static void candidatesCreate(Candidates** candidates, int len);
 
 static void candidatesDelete(Candidates* candidates);
 
-static void hAlignmentsCreate(HAlignments** halignments, int len);
-
-static void hAlignmentStretch(HAlignment* haptr, Chain* query, Chain* target,
-    int extendLen, Scorer* scorer);
-
-static void hAlignmentExtend(HAlignment* haptr, Chain* query, Chain* target,
-    Scorer* scorer);
-
-static void hAlignmentsDelete(HAlignments* halignments);
-
 static void* findIndices(void* param);
 
 // ***************************************************************************
@@ -191,12 +161,6 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
     ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
 
-    int hAlignmentsLen = (37000 - seedLen) * 2 + 1;
-    HAlignments** halignments = new HAlignments*[threadLen];
-    for (int i = 0; i < threadLen; ++i) {
-        hAlignmentsCreate(&halignments[i], hAlignmentsLen);
-    }
-
     initTotal += timerStop(&initTimer);
 
     for (int i = 0; i < threadLen; ++i) {
@@ -215,10 +179,10 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
         threadData->database = database;
         threadData->databaseLen = databaseLen;
         threadData->queries = queries;
+
         threadData->seedScores = seedScores;
         threadData->seeds = seeds;
-        threadData->scorer = scorer;
-        threadData->halignments = halignments[i];
+
         threadData->candidates = candidates;
         threadData->indices = indices;
 
@@ -234,11 +198,6 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
     timerStart(&deleteTimer);
 
-    for (int i = 0; i < threadLen; ++i) {
-        hAlignmentsDelete(halignments[i]);
-    }
-
-    delete[] halignments;
     delete[] threadTasks;
 
     seedsDelete(seeds);
@@ -401,83 +360,15 @@ static void candidatesDelete(Candidates* candidates) {
     delete candidates;
 }
 
-static void hAlignmentsCreate(HAlignments** halignments, int len) {
-    HAlignment ha = {0};
-    (*halignments) = new HAlignments(len, ha);
-}
-
-static void hAlignmentStretch(HAlignment* haptr, Chain* query, Chain* target,
-    int extendLen, Scorer* scorer) {
-
-    int qend = haptr->qend;
-    int tend = haptr->tstart + qend - haptr->qstart;
-
-    int score = haptr->score;
-    const char* qcodes = chainGetCodes(query);
-    const char* tcodes = chainGetCodes(target);
-
-    for (int i = 1; i < extendLen + 1; ++i) {
-        score += scorerScore(scorer, qcodes[qend + i], tcodes[tend + i]);
-    }
-
-    haptr->qend = qend + extendLen;
-    haptr->score = score;
-}
-
-static void hAlignmentExtend(HAlignment* haptr, Chain* query, Chain* target,
-    Scorer* scorer) {
-
-    int qstart = haptr->qstart;
-    int tstart = haptr->tstart;
-
-    int qend = haptr->qend;
-    int tend = tstart + qend - qstart;
-
-    int maxExtendLeft = MIN(qstart, tstart);
-    int maxExtendRight = MIN(chainGetLength(query) - qend - 1,
-        chainGetLength(target) - tend - 1);
-
-    int score = haptr->score;
-    const char* qcodes = chainGetCodes(query);
-    const char* tcodes = chainGetCodes(target);
-
-    int l, r;
-
-    for (l = 1; l < maxExtendLeft + 1; ++l) {
-        int substScore = scorerScore(scorer, qcodes[qstart - l], tcodes[tstart - l]);
-
-        if (substScore < 0) break;
-        score += substScore;
-    }
-
-    for (r = 1; r < maxExtendRight + 1; ++r) {
-        int substScore = scorerScore(scorer, qcodes[qend + r], tcodes[tend + r]);
-
-        if (substScore < 0) break;
-        score += substScore;
-    }
-
-    haptr->qstart = qstart - l + 1;
-    haptr->qend = qend + r - 1;
-    haptr->tstart = tstart - l + 1;
-    haptr->score = score;
-}
-
-static void hAlignmentsDelete(HAlignments* halignments) {
-    vector<HAlignment>().swap(*halignments);
-    halignments->clear();
-    delete halignments;
-}
-
 static void* findIndices(void* param) {
 
     // **********
 
-    Timeval threadTimer, initTimer, automatonTimer, halignTimer,
-        extendTimer, candidatesTimer, indicesTimer, deleteTimer;
+    Timeval threadTimer, initTimer, automatonTimer, diagTimer, 
+        candidatesTimer, indicesTimer, deleteTimer;
     long long threadTotal = 0, initTotal = 0, automatonTotal = 0,
-        halignTotal = 0, extendTotal = 0, candidatesTotal = 0,
-        indicesTotal = 0, deleteTotal = 0;
+        diagTotal = 0, candidatesTotal = 0, indicesTotal = 0,
+        deleteTotal = 0;
 
     // **********
 
@@ -499,15 +390,13 @@ static void* findIndices(void* param) {
 
     int* seedScores = threadData->seedScores;
     Seeds* seeds = threadData->seeds;
-    Scorer* scorer = threadData->scorer;
-
-    HAlignments* halignments = threadData->halignments;
 
     Candidates* candidates = threadData->candidates;
     Data* indices = threadData->indices;
 
-    vector<int>* control = new vector<int>(2 * 37000, 0);
-    vector<Hit>* hits = new vector<Hit>();
+    //
+    // Craete your structures here or in loop
+    //
 
     initTotal += timerStop(&initTimer);
 
@@ -532,9 +421,6 @@ static void* findIndices(void* param) {
 
             ACNode* state = automaton;
 
-            HAlignment* max = &(*halignments)[0];
-            max->score = -1;
-
             Chain* target = database[targetIdx];
             int targetLen = chainGetLength(target);
             const char* tcodes = chainGetCodes(target);
@@ -554,73 +440,41 @@ static void* findIndices(void* param) {
                 state = state->edge[c];
 
                 if (state->final) {
-                    hits->emplace_back(k - seedLen + 1, &(state->positions));
+                    // For each hit do stuff:
+                    // 1st algoritm version = 
+                    //     count the number of hits on a diagonal, pick the maximum one
+                    //     and create a Candidate (count, targetIdx)
+                    // 2nd algoritm version =
+                    //     instead of counting, calculate the sum of seedScores on a
+                    //     diagonal (to get a seedScore just type seedScores[seedCode]).
+                    //     Create a candidate with the maximum sum as (sum, targetIdx)
+                    //
+                    //  P.S. the first element in the positions array is a seedCode!
                 }
             }
 
             automatonTotal += timerStop(&automatonTimer);
-            timerStart(&halignTimer);
+            timerStart(&diagTimer);
 
-            for (unsigned int k = 0; k < hits->size(); ++k) {
-                vector<uint16>* qstarts = (*hits)[k].qstarts;
-                int code = (*qstarts)[0];
-                int size = qstarts->size();
+            //
+            // Find the maximum count or score
+            //
+            int score = 0;
 
-                int tstart = (*hits)[k].tstart;
+            if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
+                (*candidates)[queryIdx].emplace_back(score, targetIdx);
 
-                for (int i = 1; i < size; ++i) {
-                    int qstart = (*qstarts)[i];
-
-                    int d = ((tstart - qstart + dLen) % dLen);
-                    HAlignment* haptr = &(*halignments)[d];
-
-                    if ((*control)[d] == 0) {
-                        haptr->qstart = qstart;
-                        haptr->qend = qstart + seedLen - 1;
-                        haptr->tstart = tstart;
-                        haptr->score = seedScores[code];
-                        
-                        (*control)[d] = 1;
-                    } else {
-                        if (qstart - haptr->qend < A) {
-                            int extendLen = qstart + seedLen - haptr->qend - 1;
-                            hAlignmentStretch(haptr, query, target, extendLen, scorer);
-                        } else {
-                            if (haptr->qend - haptr->qstart > 2 * seedLen) continue;
-
-                            haptr->qstart = qstart;
-                            haptr->qend = qstart + seedLen - 1;
-                            haptr->tstart = tstart;
-                            haptr->score = seedScores[code];
-                        }
-                    }
-
-                    if (max->score < haptr->score) {
-                        max = haptr;
-                    }
-                }
+                min = MIN(score, min);
             }
 
-            halignTotal += timerStop(&halignTimer);
-
-            if (max->score < 0) continue;
-
-            timerStart(&extendTimer);
-
-            hAlignmentExtend(max, query, target, scorer);
-
-            if ((*candidates)[queryIdx].size() < maxCandidates || max->score > min) {
-                (*candidates)[queryIdx].emplace_back(max->score, targetIdx);
-
-                min = MIN(max->score, min);
-            }
-
-            extendTotal += timerStop(&extendTimer);
+            diagTotal += timerStop(&diagTimer);
 
             timerStart(&deleteTimer);
 
-            fill(control->begin(), control->begin() + dLen, 0);
-            hits->clear();
+            //
+            // Clear or delete your structures here if you have to
+            // or bellow before the deletion of threadData structure
+            //
 
             deleteTotal += timerStop(&deleteTimer);
         }
@@ -629,7 +483,6 @@ static void* findIndices(void* param) {
 
         if ((*candidates)[queryIdx].size() > maxCandidates) {
 
-            // change to sort!!
             stable_sort(
                 (*candidates)[queryIdx].begin(),
                 (*candidates)[queryIdx].end(),
@@ -648,14 +501,12 @@ static void* findIndices(void* param) {
         if (threadData->extractIndices == 1) {
             (*indices)[queryIdx].reserve((*candidates)[queryIdx].size());
 
-            // int size = (*candidates)[queryIdx].size();
             for (int i = 0; i < (*candidates)[queryIdx].size(); ++i) {
                 (*indices)[queryIdx].emplace_back((*candidates)[queryIdx][i].idx);
             }   
 
             vector<Candidate>().swap((*candidates)[queryIdx]);
 
-            // if (size == maxCandidates) {
             if ((*indices)[queryIdx].size() == maxCandidates) {
                 sort((*indices)[queryIdx].begin(), (*indices)[queryIdx].end());
             }
@@ -669,12 +520,6 @@ static void* findIndices(void* param) {
         automatonTotal += timerStop(&automatonTimer);
     }
 
-    vector<int>().swap(*control);
-    delete control;
-
-    vector<Hit>().swap(*hits);
-    delete hits;
-
     delete threadData;
 
     threadTotal += timerStop(&threadTimer);
@@ -683,9 +528,8 @@ static void* findIndices(void* param) {
         timerPrint("threadTime", threadTotal);
         timerPrint("  initTime", initTotal);
         timerPrint("  [D]automatonTime", automatonTotal);
-        timerPrint("  [R]halignTime", halignTotal);
-        timerPrint("  [R]extendTime", extendTotal);
-        timerPrint("  [R]deleteTime", deleteTotal);
+        timerPrint("  [D]diagTime", diagTotal);
+        timerPrint("  [D]deleteTime", deleteTotal);
         timerPrint("  candidatesTime", candidatesTotal);
         timerPrint("  indicesTime", indicesTotal);
     }

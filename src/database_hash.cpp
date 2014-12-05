@@ -472,8 +472,6 @@ static void* findIndices(void* param) {
                             maxScore = diag;
                         }
                     }
-
-
                 }
             }
 

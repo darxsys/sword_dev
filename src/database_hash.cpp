@@ -19,6 +19,7 @@ using namespace std;
 #include "database_hash.h"
 #include "swsharp/swsharp.h"
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define SEED_IDX_LEN(n) ((n) == 3 ? 26426 : ((n) == 4 ? 845626 : 27060026))
@@ -199,7 +200,7 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
         // findIndices((void*) threadData);
         if (useHash) {
             // read hash
-            readInfoFile()
+            // readInfoFile()
 
             threadTasks[i] = threadPoolSubmit(findIndicesHash, static_cast<void*>(threadData));
         } else {

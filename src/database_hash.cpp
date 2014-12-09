@@ -61,7 +61,7 @@ typedef struct {
     int extractIndices;
     Chain** database;
     int databaseLen;
-    // int databaseStart;
+    int databaseStart;
     Chain** queries;
     int* seedScores;
     Seeds* seeds;
@@ -88,7 +88,7 @@ static const int DMASK[] = { 0, 0, 0, 0x7fff, 0xfffff, 0x1ffffff };
 
 extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Chain** queries, int queriesLen, int seedLen, int maxCandidates,
-    int permute, Scorer* scorer);
+    int permute, Scorer* scorer, int useHash, char* databasePath);
 
 extern void databaseIndicesDelete(void* indices_);
 
@@ -122,7 +122,7 @@ static void* findIndices(void* param);
 static void* findIndicesHash(void* param);
 
 static void readVolume(int** hash, int** positions, char* databasePath, int seedLen,
-    int* seedCodes, int seedCodesLen, int volumeNum);
+    int seedCodesLen, int volumeNum);
 
 static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
     int* scoresLen, char* databasePath, int seedLen);
@@ -131,7 +131,7 @@ static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
 
 extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Chain** queries, int queriesLen, int seedLen, int maxCandidates,
-    int permute, Scorer* scorer, int useHash) {
+    int permute, Scorer* scorer, int useHash, char* databasePath) {
 
     // **********
 
@@ -174,44 +174,98 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
     initTotal += timerStop(&initTimer);
 
-    for (int i = 0; i < threadLen; ++i) {
+    if (useHash) {
+        // read hash
+        int seedCodesLen = SEED_IDX_LEN(seedLen);
+        int* volumes;
+        int volumesLen;
+        int* targetsLens;
+        int scoresLen;
 
-        ThreadData* threadData = new ThreadData();
+        int* hash;
+        int* positions;
 
-        threadData->taskStart = i * threadTaskLen;
-        threadData->taskEnd = (i + 1 == threadLen) ?
-            queriesLen : (i + 1) * threadTaskLen;
+        readInfoFile(&volumes, &volumesLen, &targetsLens, &scoresLen, 
+            databasePath, seedLen);
 
-        threadData->seedLen = seedLen;
-        threadData->maxCandidates = maxCandidates;
-        // for now!!!
-        threadData->extractIndices = 1;
+        // create diagonals for every thread
 
-        threadData->database = database;
-        threadData->databaseLen = databaseLen;
-        threadData->queries = queries;
+        int*** threadDiagScores = new int**[threadLen];
+        for (int i = 0; i < threadLen; ++i) {
+            threadDiagScores[i] = new int*[scoresLen];
 
-        threadData->seedScores = seedScores;
-        threadData->seeds = seeds;
+            for (int j = 0; j < scoresLen; ++j) {
+                threadDiagScores[i][j] = new int[90000];
+            }
+        }
 
-        threadData->candidates = candidates;
-        threadData->indices = indices;
+        for (int i = 0; i < volumesLen; ++i) {
+            readVolume(&hash, &positions, databasePath, seedLen, seedCodesLen, i);
 
-        // findIndices((void*) threadData);
-        if (useHash) {
-            // read hash
-            // readInfoFile()
+            for (int j = 0; j < threadLen; ++j) {
 
-            threadTasks[i] = threadPoolSubmit(findIndicesHash, static_cast<void*>(threadData));
-        } else {
+                ThreadData* threadData = new ThreadData();
+
+                threadData->taskStart = j * threadTaskLen;
+                threadData->taskEnd = (j + 1 == threadLen) ?
+                    queriesLen : (j + 1) * threadTaskLen;
+
+                threadData->seedLen = seedLen;
+                threadData->maxCandidates = maxCandidates;
+                // for now!!!
+                threadData->extractIndices = 1;
+
+                threadData->database = database;
+                threadData->databaseLen = databaseLen;
+                threadData->databaseStart = volumes[2 * i];
+                threadData->queries = queries;
+
+                threadData->seedScores = seedScores;
+                threadData->seeds = seeds;
+
+                threadData->candidates = candidates;
+                threadData->indices = indices;          
+
+                threadTasks[i] = threadPoolSubmit(findIndicesHash, static_cast<void*>(threadData));            
+            }                    
+
+        }
+            
+
+    } else {
+        for (int i = 0; i < threadLen; ++i) {
+
+            ThreadData* threadData = new ThreadData();
+
+            threadData->taskStart = i * threadTaskLen;
+            threadData->taskEnd = (i + 1 == threadLen) ?
+                queriesLen : (i + 1) * threadTaskLen;
+
+            threadData->seedLen = seedLen;
+            threadData->maxCandidates = maxCandidates;
+            // for now!!!
+            threadData->extractIndices = 1;
+
+            threadData->database = database;
+            threadData->databaseLen = databaseLen;
+            threadData->queries = queries;
+
+            threadData->seedScores = seedScores;
+            threadData->seeds = seeds;
+
+            threadData->candidates = candidates;
+            threadData->indices = indices;
+
+            // findIndices((void*) threadData);
             threadTasks[i] = threadPoolSubmit(findIndices, static_cast<void*>(threadData));
+        }
+
+        for (int i = 0; i < threadLen; ++i) {
+            threadPoolTaskWait(threadTasks[i]);
+            threadPoolTaskDelete(threadTasks[i]);
         }
     }
 
-    for (int i = 0; i < threadLen; ++i) {
-        threadPoolTaskWait(threadTasks[i]);
-        threadPoolTaskDelete(threadTasks[i]);
-    }
 
     timerStart(&deleteTimer);
 
@@ -788,7 +842,7 @@ static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
 }
 
 static void readVolume(int** hash, int** positions, char* databasePath, int seedLen,
-    int* seedCodes, int seedCodesLen, int volumeNum) {
+    int seedCodesLen, int volumeNum) {
 
     char* indexVolume = new char[BUFFER];
     FILE* indexFile = NULL;

@@ -234,7 +234,7 @@ int main(int argc, char* argv[]) {
     threadPoolInitialize(cardsLen + 8);
 
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        seedLen, maxCandidates, permute, scorer, useHash);
+        seedLen, maxCandidates, permute, scorer, useHash, NULL);
         // automata, automataLen, seedLen, maxCandidates, scorer);
 
     deleteFastaChains(database, databaseLen);

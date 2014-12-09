@@ -71,6 +71,7 @@ typedef struct {
     int* positions;
     int** diagScores;
     int* queryMins;
+    int* targetsLens;
 } ThreadData;
 
 struct sort_by_score {
@@ -212,8 +213,6 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
             queryMins[i] = 100000000;
         }
 
-        // TODO: delete all this stuff
-
         for (int i = 0; i < volumesLen; ++i) {
             readVolume(&hash, &positions, databasePath, seedLen, seedCodesLen, i);
 
@@ -231,7 +230,7 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
                 threadData->extractIndices = (i + 1) == volumesLen ? true : false;
 
                 threadData->database = database;
-                threadData->databaseLen = databaseLen;
+                threadData->databaseLen = volumes[2 * i + 1];
                 threadData->databaseStart = volumes[2 * i];
                 threadData->queries = queries;
 
@@ -683,6 +682,8 @@ static void* findIndicesHash(void* param) {
     int* hash = threadData->hash;
     int* positions = threadData->positions;
     int** diagScores = threadData->diagScores;
+
+    int* targetsLens = threadData->targetsLens;
     //
     // Create your structures here or in loop
     //
@@ -704,7 +705,7 @@ static void* findIndicesHash(void* param) {
             for (int hitIdx = startPos; hitIdx < endPos; hitIdx += 2) {
                 int target = hash[hitIdx];
                 int location = hash[hitIdx+1];
-                int targetLen = chainGetLength(database[target + databaseStart]);
+                int targetLen = targetsLens[target];
 
                 int dLen = queryLen + targetLen - 2 * seedLen + 1;
                 int diag = (location - i + dLen) % dLen;
@@ -775,6 +776,7 @@ static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
 
     snprintf(infoPath, BUFFER, "%s.%d.info.bin", databasePath, seedLen);
 
+    // printf("INFO PATH: %s\n", infoPath);
     infoFile = fopen(infoPath, "rb");
     ASSERT(infoFile, "missing info file");
 
@@ -819,11 +821,14 @@ static void readVolume(int** hash, int** positions, char* databasePath, int seed
     snprintf(indexVolume, BUFFER, "%s.%d.index.%02d.bin",
         databasePath, seedLen, volumeNum);
 
+    printf("VOLUME PATH: %s\n", indexVolume);
     indexFile = fopen(indexVolume, "rb");
     ASSERT(indexFile, "missing index volume %02d", volumeNum);
 
     error = fread(sizes, sizeof(*sizes), seedCodesLen, indexFile);
+    printf("SIZES: %d, codesLen: %d\n", error, seedCodesLen);
     ASSERT(error == seedCodesLen, "error while reading index volume %02d", volumeNum);
+    // printf("READ SEED SIZES\n");
 
     fclose(indexFile);
 

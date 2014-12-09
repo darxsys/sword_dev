@@ -66,6 +66,7 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
+    {"use-hash", required_argument, 0, 'x'},
     {"permute", no_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
@@ -125,6 +126,8 @@ int main(int argc, char* argv[]) {
 
     int permute = 0;
 
+    int useHash = 0;
+
     while (1) {
 
         char argument = getopt_long(argc, argv, "i:j:g:e:s:ph", options, NULL);
@@ -179,6 +182,9 @@ int main(int argc, char* argv[]) {
         case 'd':
             maxCandidates = atoi(optarg);
             break;
+        case 'x':
+            useHash = 1;
+            break;    
         case 'p':
             permute = 1;
             break;
@@ -228,7 +234,7 @@ int main(int argc, char* argv[]) {
     threadPoolInitialize(cardsLen + 8);
 
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        seedLen, maxCandidates, permute, scorer);
+        seedLen, maxCandidates, permute, scorer, useHash);
         // automata, automataLen, seedLen, maxCandidates, scorer);
 
     deleteFastaChains(database, databaseLen);

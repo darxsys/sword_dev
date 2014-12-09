@@ -26,6 +26,8 @@ using namespace std;
 #define AA 23
 #define A 40
 
+#define BUFFER 1024
+
 #define ASSERT(expr, fmt, ...)\
     do {\
         if (!(expr)) {\
@@ -64,6 +66,7 @@ typedef struct {
     Seeds* seeds;
     Candidates* candidates;
     Data* indices;
+    int* hash;
 } ThreadData;
 
 struct sort_by_score {
@@ -115,9 +118,13 @@ static void candidatesCreate(Candidates** candidates, int len);
 static void candidatesDelete(Candidates* candidates);
 
 static void* findIndices(void* param);
+static void* findIndicesHash(void* param);
 
 static void readVolume(int** hash, int** positions, char* databasePath, int seedLen,
     int* seedCodes, int seedCodesLen, int volumeNum);
+
+static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
+    int* scoresLen, char* databasePath, int seedLen);
 // ***************************************************************************
 // PUBLIC
 
@@ -191,6 +198,9 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
         // findIndices((void*) threadData);
         if (useHash) {
+            // read hash
+            readInfoFile()
+
             threadTasks[i] = threadPoolSubmit(findIndicesHash, static_cast<void*>(threadData));
         } else {
             threadTasks[i] = threadPoolSubmit(findIndices, static_cast<void*>(threadData));
@@ -737,6 +747,45 @@ static void* findIndicesHash(void* param) {
     return NULL;
 }
 
+static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
+    int* scoresLen, char* databasePath, int seedLen) {
+
+    char* infoPath = new char[BUFFER];
+    FILE* infoFile = NULL;
+
+    int error, targetsLensLen;
+
+    snprintf(infoPath, BUFFER, "%s.%d.info.bin", databasePath, seedLen);
+
+    infoFile = fopen(infoPath, "rb");
+    ASSERT(infoFile, "missing info file");
+
+    error = fread(volumesLen, sizeof(*volumesLen), 1, infoFile);
+    ASSERT(error == 1, "error while reading the info file");
+
+    *volumes = new int[*volumesLen];
+
+    error = fread(*volumes, sizeof(**volumes), *volumesLen, infoFile);
+    ASSERT(error == *volumesLen, "error while reading the info file");
+
+    *volumesLen /= 2;
+
+    for (int i = 0; i < *volumesLen; ++i) {
+        *scoresLen = MAX(*scoresLen, (*volumes)[2 * i + 1]);
+    }
+
+    error = fread(&targetsLensLen, sizeof(targetsLensLen), 1, infoFile);
+    ASSERT(error == 1, "error while reading the info file");
+
+    *targetsLens = new int[targetsLensLen];
+
+    error = fread(*targetsLens, sizeof(**targetsLens), targetsLensLen, infoFile);
+    ASSERT(error == targetsLensLen, "error while reading the info file");
+
+    fclose(infoFile);
+    delete[] infoPath;
+}
+
 static void readVolume(int** hash, int** positions, char* databasePath, int seedLen,
     int* seedCodes, int seedCodesLen, int volumeNum) {
 
@@ -778,7 +827,7 @@ static void readVolume(int** hash, int** positions, char* databasePath, int seed
     ASSERT(hashFile, "missing hash volume %02d", volumeNum);
 
     error = fread(*hash, sizeof(int), sumSizes, hashFile);
-    ASSERT(error == sizes[i], "error while reading hash volume %02d", volumeNum);
+    ASSERT(error == sumSizes, "error while reading hash volume %02d", volumeNum);
 
     fclose(hashFile);
 

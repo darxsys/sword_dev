@@ -68,6 +68,9 @@ typedef struct {
     Candidates* candidates;
     Data* indices;
     int* hash;
+    int* positions;
+    int** diagScores;
+    int* queryMins;
 } ThreadData;
 
 struct sort_by_score {
@@ -104,6 +107,7 @@ extern void filteredDatabaseDelete(Chain** filteredDatabase);
 // PRIVATE
 
 static int seedCode(vector<char>* seed);
+static int seedCode(Chain* chain, int pos, int seedLen);
 static int seedScore(vector<char>* seed, Scorer* scorer);
 static void seedScoresCreate(int** seedScores, int* seedScoresLen, int seedLen,
     Scorer* scorer);
@@ -196,8 +200,19 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
             for (int j = 0; j < scoresLen; ++j) {
                 threadDiagScores[i][j] = new int[90000];
+
+                for (int k = 0; k < 90000; ++k) {
+                    threadDiagScores[i][j][k] = 0;
+                }
             }
         }
+
+        int* queryMins = new int[queriesLen];
+        for (int i = 0; i < queriesLen; ++i) {
+            queryMins[i] = 100000000;
+        }
+
+        // TODO: delete all this stuff
 
         for (int i = 0; i < volumesLen; ++i) {
             readVolume(&hash, &positions, databasePath, seedLen, seedCodesLen, i);
@@ -213,7 +228,7 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
                 threadData->seedLen = seedLen;
                 threadData->maxCandidates = maxCandidates;
                 // for now!!!
-                threadData->extractIndices = 1;
+                threadData->extractIndices = (i + 1) == volumesLen ? true : false;
 
                 threadData->database = database;
                 threadData->databaseLen = databaseLen;
@@ -224,13 +239,27 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
                 threadData->seeds = seeds;
 
                 threadData->candidates = candidates;
-                threadData->indices = indices;          
+                threadData->indices = indices;
+                threadData->hash = hash; 
+                threadData->positions = positions;         
+                threadData->diagScores = threadDiagScores[j];
+
+                threadData->queryMins = queryMins;
 
                 threadTasks[i] = threadPoolSubmit(findIndicesHash, static_cast<void*>(threadData));            
             }                    
-
         }
-            
+
+        delete[] queryMins;
+        for (int i = 0; i < threadLen; ++i) {
+            for (int j = 0; j < scoresLen; ++j) {
+                delete[] threadDiagScores[i][j];
+            }
+
+            delete[] threadDiagScores[i];
+        }
+
+        delete[] threadDiagScores;
 
     } else {
         for (int i = 0; i < threadLen; ++i) {
@@ -363,6 +392,19 @@ static int seedCode(vector<char>* seed) {
     return code;
 }
 
+static int seedCode(Chain* chain, int pos, int seedLen) {
+
+    int code = 0;
+    int start = 5 * (seedLen - 1);
+
+    for (int i = 0; i < seedLen; ++i) {
+        code += static_cast<int>(toupper(chainGetChar(chain, pos + i)) - 'A')
+            << (start - 5 * i);
+    }
+
+    return code;
+}
+
 static int seedScore(vector<char>* seed, Scorer* scorer) {
 
     int score = 0;
@@ -375,6 +417,7 @@ static int seedScore(vector<char>* seed, Scorer* scorer) {
 
     return score;
 }
+
 
 static void seedScoresCreate(int** seedScores, int* seedScoresLen, int seedLen,
     Scorer* scorer) {
@@ -617,20 +660,6 @@ static void* findIndices(void* param) {
 }
 
 static void* findIndicesHash(void* param) {
-
-    // **********
-
-    Timeval threadTimer, initTimer, automatonTimer, diagTimer, 
-        candidatesTimer, indicesTimer, deleteTimer;
-    long long threadTotal = 0, initTotal = 0, automatonTotal = 0,
-        diagTotal = 0, candidatesTotal = 0, indicesTotal = 0,
-        deleteTotal = 0;
-
-    // **********
-
-    timerStart(&threadTimer);
-    timerStart(&initTimer);
-
     ThreadData* threadData = static_cast<ThreadData*>(param);
 
     int taskStart = threadData->taskStart;
@@ -649,103 +678,59 @@ static void* findIndicesHash(void* param) {
 
     Candidates* candidates = threadData->candidates;
     Data* indices = threadData->indices;
+    int databaseStart = threadData->databaseStart;
     
-
+    int* hash = threadData->hash;
+    int* positions = threadData->positions;
+    int** diagScores = threadData->diagScores;
     //
     // Create your structures here or in loop
     //
-
-    int* diagScores = new int[90000];
-
-    initTotal += timerStop(&initTimer);
-
     for (int queryIdx = taskStart; queryIdx < taskEnd; ++queryIdx) {
 
         Chain* query = queries[queryIdx];
         int queryLen = chainGetLength(query);
-        const char* qcodes = chainGetCodes(query);
-
-        timerStart(&automatonTimer);
-
-        ACNode* automaton = automatonCreate(seeds, seedLen, query);
-
-        automatonTotal += timerStop(&automatonTimer);
 
         (*candidates)[queryIdx].reserve(maxCandidates);
 
-        int min = (*candidates)[queryIdx].size() == maxCandidates ?
-            (*candidates)[queryIdx][maxCandidates - 1].score : 100000000;
+        int min = threadData->queryMins[queryIdx];
 
-        for (int targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
+        for (int i = 0; i < queryLen - seedLen + 1; ++i) {
+            int code = seedCode(query, i, seedLen);
 
-            ACNode* state = automaton;
+            int startPos = positions[code];
+            int endPos = positions[code+1];
 
-            Chain* target = database[targetIdx];
-            int targetLen = chainGetLength(target);
-            const char* tcodes = chainGetCodes(target);
+            for (int hitIdx = startPos; hitIdx < endPos; hitIdx += 2) {
+                int target = hash[hitIdx];
+                int location = hash[hitIdx+1];
+                int targetLen = chainGetLength(database[target + databaseStart]);
 
-            int dLen = queryLen + targetLen - 2 * seedLen + 1;
+                int dLen = queryLen + targetLen - 2 * seedLen + 1;
+                int diag = (location - i + dLen) % dLen;
 
-            // memset(diagScores, 0, sizeof(int) * dLen);
-            for (int i = 0; i < dLen; ++i) {
-                diagScores[i] = 0;
-            }
-
-            timerStart(&automatonTimer);
-
-            int maxScore = 0;
-
-            for (int k = 0; k < targetLen; ++k) {
-                int c = static_cast<int>(tcodes[k]);
-
-                while (!state->edge[c]) {
-                    state = state->fail;
-                }
-                if (state->edge[c] == state) continue;
-
-                state = state->edge[c];
-
-                if (state->final) {
-                    int diag;
-                    uint16 seedCode = state->positions[0];
-                    for (int queryLocs = 1; queryLocs < state->positions.size(); ++queryLocs) {
-                        int location = state->positions[queryLocs];
-                        diag = (k - seedLen + 1 - location + dLen) % dLen;
-
-                        // diagScores[diag] += seedScores[seedCode];
-                        diagScores[diag]++;
-
-                        if (diagScores[diag] > maxScore) {
-                            maxScore = diagScores[diag];
-                        }
-                    }
+                diagScores[target][diag]++;
+                if (diagScores[target][diag] > diagScores[target][90000 - 1]) {
+                    diagScores[target][90000 - 1] = diagScores[target][diag];
                 }
             }
+        }
 
-            automatonTotal += timerStop(&automatonTimer);
-            timerStart(&diagTimer);
-
+        // go through all targets to check for this query
+        for (int i = 0; i < databaseLen; ++i) {
             //
             // Find the maximum count or score
             //
-            int score = maxScore;
+            int score = diagScores[i][90000 - 1];
 
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
-                (*candidates)[queryIdx].emplace_back(score, targetIdx);
+                (*candidates)[queryIdx].emplace_back(score, i + databaseStart);
 
                 min = MIN(score, min);
             }
-
-            diagTotal += timerStop(&diagTimer);
-
-            timerStart(&deleteTimer);
-
-            deleteTotal += timerStop(&deleteTimer);
         }
 
-        timerStart(&candidatesTimer);
-
-        if ((*candidates)[queryIdx].size() > maxCandidates) {
+        if (threadData->extractIndices && (*candidates)[queryIdx].size() > maxCandidates) {
 
             stable_sort(
                 (*candidates)[queryIdx].begin(),
@@ -759,10 +744,7 @@ static void* findIndicesHash(void* param) {
             (*candidates)[queryIdx].swap(temp);
         }
 
-        candidatesTotal += timerStop(&candidatesTimer);
-        timerStart(&indicesTimer);
-
-        if (threadData->extractIndices == 1) {
+        if (threadData->extractIndices) {
             (*indices)[queryIdx].reserve((*candidates)[queryIdx].size());
 
             for (int i = 0; i < (*candidates)[queryIdx].size(); ++i) {
@@ -776,29 +758,10 @@ static void* findIndicesHash(void* param) {
             }
         }
 
-        indicesTotal += timerStop(&indicesTimer);
-        timerStart(&automatonTimer);
-
-        automatonDelete(automaton);
-
-        automatonTotal += timerStop(&automatonTimer);
+        threadData->queryMins[queryIdx] = min;
     }
 
     delete threadData;
-    delete[] diagScores;
-
-    threadTotal += timerStop(&threadTimer);
-
-    if (taskStart == 0 && taskEnd != 0) {
-        timerPrint("threadTime", threadTotal);
-        timerPrint("  initTime", initTotal);
-        timerPrint("  [D]automatonTime", automatonTotal);
-        timerPrint("  [D]diagTime", diagTotal);
-        timerPrint("  [D]deleteTime", deleteTotal);
-        timerPrint("  candidatesTime", candidatesTotal);
-        timerPrint("  indicesTime", indicesTotal);
-    }
-
     return NULL;
 }
 
@@ -865,13 +828,15 @@ static void readVolume(int** hash, int** positions, char* databasePath, int seed
     fclose(indexFile);
 
     long long int sumSizes = sizes[0];
-    *positions = new int[seedCodesLen];
+    *positions = new int[seedCodesLen + 1];
     (*positions)[0] = 0;
 
     for (int i = 1; i < seedCodesLen; ++i) {
         (*positions)[i] = sumSizes;
         sumSizes += sizes[i];
     }
+
+    (*positions)[seedCodesLen] = sumSizes;
 
     *hash = new int[sumSizes];
 

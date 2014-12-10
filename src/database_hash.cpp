@@ -242,11 +242,15 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
                 threadData->hash = hash; 
                 threadData->positions = positions;         
                 threadData->diagScores = threadDiagScores[j];
+                threadData->targetsLens = targetsLens;
 
                 threadData->queryMins = queryMins;
 
                 threadTasks[i] = threadPoolSubmit(findIndicesHash, static_cast<void*>(threadData));            
-            }                    
+            }
+
+            delete[] hash;
+            delete[] positions;                    
         }
 
         delete[] queryMins;
@@ -259,7 +263,9 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
         }
 
         delete[] threadDiagScores;
-
+        delete[] volumes;
+        delete[] targetsLens;
+        delete[] queryMins;
     } else {
         for (int i = 0; i < threadLen; ++i) {
 
@@ -705,7 +711,7 @@ static void* findIndicesHash(void* param) {
             for (int hitIdx = startPos; hitIdx < endPos; hitIdx += 2) {
                 int target = hash[hitIdx];
                 int location = hash[hitIdx+1];
-                int targetLen = targetsLens[target];
+                int targetLen = targetsLens[target + databaseStart];
 
                 int dLen = queryLen + targetLen - 2 * seedLen + 1;
                 int diag = (location - i + dLen) % dLen;

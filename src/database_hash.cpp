@@ -40,10 +40,10 @@ using namespace std;
 typedef unsigned short uint16;
 
 struct Candidate {
-    int score;
+    double score;
     int idx;
 
-    Candidate(int score_, int idx_) :
+    Candidate(double score_, int idx_) :
         score(score_), idx(idx_) {
     }
 };
@@ -433,7 +433,7 @@ static void* findIndices(void* param) {
 
         (*candidates)[queryIdx].reserve(maxCandidates);
 
-        int min = (*candidates)[queryIdx].size() == maxCandidates ?
+        double min = (*candidates)[queryIdx].size() == maxCandidates ?
             (*candidates)[queryIdx][maxCandidates - 1].score : 100000000;
 
         for (int targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
@@ -473,7 +473,7 @@ static void* findIndices(void* param) {
                         diag = (k - seedLen + 1 - location + dLen) % dLen;
 
                         // diagScores[diag] += seedScores[seedCode];
-                        diagScores[diag]++;
+                        ++diagScores[diag];
 
                         if (diagScores[diag] > maxScore) {
                             maxScore = diagScores[diag];
@@ -488,9 +488,10 @@ static void* findIndices(void* param) {
             //
             // Find the maximum count or score
             //
-            int score = maxScore;
+            double score = maxScore;
 
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
+                int targetLen = chainGetLength(database[targetIdx]);
                 (*candidates)[queryIdx].emplace_back(score, targetIdx);
 
                 min = MIN(score, min);

@@ -233,6 +233,8 @@ int main(int argc, char* argv[]) {
 
     threadPoolInitialize(cardsLen + 8);
 
+    fprintf(stderr, "Num queries: %d\n", queriesLen);
+
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
         seedLen, maxCandidates, permute, scorer, useHash);
         // automata, automataLen, seedLen, maxCandidates, scorer);

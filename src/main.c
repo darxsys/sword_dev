@@ -66,7 +66,7 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
-    {"use-hash", required_argument, 0, 'x'},
+    {"hash", no_argument, 0, 'x'},
     {"permute", no_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
@@ -236,7 +236,7 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "Num queries: %d\n", queriesLen);
 
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        seedLen, maxCandidates, permute, scorer, useHash);
+        seedLen, maxCandidates, permute, scorer, useHash, databasePath);
         // automata, automataLen, seedLen, maxCandidates, scorer);
 
     deleteFastaChains(database, databaseLen);

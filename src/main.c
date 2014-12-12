@@ -67,6 +67,7 @@ static struct option options[] = {
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
     {"hash", no_argument, 0, 'x'},
+    {"longest", no_argument, 0, 'y'},
     {"permute", no_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
@@ -127,10 +128,11 @@ int main(int argc, char* argv[]) {
     int permute = 0;
 
     int useHash = 0;
+    int numLongest = 1000;
 
     while (1) {
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:ph", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:y:h", options, NULL);
 
         if (argument == -1) {
             break;
@@ -185,6 +187,9 @@ int main(int argc, char* argv[]) {
         case 'x':
             useHash = 1;
             break;    
+        case 'y':
+            numLongest = atoi(optarg);
+            break;
         case 'p':
             permute = 1;
             break;
@@ -236,7 +241,7 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "Num queries: %d\n", queriesLen);
 
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        seedLen, maxCandidates, permute, scorer, useHash, databasePath);
+        seedLen, maxCandidates, permute, scorer, useHash, databasePath, numLongest);
         // automata, automataLen, seedLen, maxCandidates, scorer);
 
     deleteFastaChains(database, databaseLen);

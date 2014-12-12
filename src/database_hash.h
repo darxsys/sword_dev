@@ -9,7 +9,7 @@ extern "C" {
 
 extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Chain** queries, int queriesLen, int seedLen, int maxCandidates,
-    int permute, Scorer* scorer, int useHash, char* databasePath);
+    int permute, Scorer* scorer, int useHash, char* databasePath, int numLongest);
 
 extern void databaseIndicesDelete(void* indices_);
 

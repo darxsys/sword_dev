@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include <vector>
+#include <set>
 #include <fstream>
 #include <iostream>
 #include <utility>
@@ -48,7 +49,18 @@ struct Candidate {
     }
 };
 
+struct ChainIdx {
+    int idx;
+    int length;
+
+    ChainIdx(int idx_, int length_) :
+        idx(idx_), length(length_) {
+
+        }
+};
+
 typedef struct Candidate Candidate;
+typedef struct ChainIdx ChainIdx;
 
 typedef vector<vector<int> > Data;
 typedef vector<vector<Candidate> > Candidates;
@@ -80,6 +92,11 @@ struct sort_by_score {
     }
 };
 
+struct sort_by_length {
+    int operator()(const ChainIdx& left, const ChainIdx& right) {
+        return left.length > right.length;
+    }
+};
 static const char AMINO_ACIDS[] = {
     'A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K',
     'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V', 'B', 'Z', 'X', '\0'
@@ -131,12 +148,17 @@ static void readVolume(int** hash, int** positions, char* databasePath, int seed
 
 static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
     int* scoresLen, char* databasePath, int seedLen);
+
+static void candidatesStatisticsOutput(Data* indices, Chain** database, 
+    long long dbLen, int numLongest);
+static void candidatesLongestTargets(Data* indices, Chain** queries, 
+    set<int>& longestTargets, int numLongest);
 // ***************************************************************************
 // PUBLIC
 
 extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Chain** queries, int queriesLen, int seedLen, int maxCandidates,
-    int permute, Scorer* scorer, int useHash, char* databasePath) {
+    int permute, Scorer* scorer, int useHash, char* databasePath, int numLongest) {
 
     // **********
 
@@ -146,6 +168,30 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
         seedsTotal = 0, deleteTotal = 0;
 
     // **********
+
+    /* Find 1000 longest sequences, also output sizes for histograms */
+    // int numLongest = 500;
+    vector<ChainIdx> allChains;
+
+    // FILE* hist = fopen("db-sizes.out", "w");
+    long long dbLen = 0;
+    for (int i = 0; i < databaseLen; ++i) {
+        int targetLen = chainGetLength(database[i]);
+        allChains.push_back(ChainIdx(i, targetLen));
+
+        dbLen += targetLen;
+    }
+
+    fprintf(stderr, "DB Len: %lld\n", dbLen);
+
+    // fclose(hist);
+
+    sort(allChains.begin(), allChains.end(), sort_by_length());
+
+    set<int> longestTargets;
+    for (int i = 0; i < MIN(numLongest, allChains.size()); ++i) {
+        longestTargets.insert(allChains[i].idx);
+    }
 
     timerStart(&heuristicTimer);
     timerStart(&initTimer);
@@ -319,6 +365,9 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     timerPrint("  seedScoresTime", seedScoresTotal);
     timerPrint("  seedsTime", seedsTotal);
     timerPrint("  deleteTime", deleteTotal);
+
+    candidatesStatisticsOutput(indices, database, dbLen, numLongest);
+    candidatesLongestTargets(indices, queries, longestTargets, numLongest);
 
     return static_cast<void*>(indices);
 }
@@ -593,7 +642,7 @@ static void* findIndices(void* param) {
             double score = maxScore;
 
             if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
-                int targetLen = chainGetLength(database[targetIdx]);
+                // int targetLen = chainGetLength(database[targetIdx]);
                 (*candidates)[queryIdx].emplace_back(score, targetIdx);
 
                 min = MIN(score, min);
@@ -869,4 +918,95 @@ static void readVolume(int** hash, int** positions, char* databasePath, int seed
 }
 
 
+static void candidatesStatisticsOutput(Data* indices, Chain** database, 
+    long long dbLen, int numLongest) {
+
+    char* sizesName = new char[BUFFER];
+    snprintf(sizesName, BUFFER, "candidates-sizes%d.out",
+        numLongest);
+
+    FILE* sizes = fopen(sizesName, "w");
+
+    char* avgsName = new char[BUFFER];
+    snprintf(avgsName, BUFFER, "candidates-avgs%d.out",
+        numLongest);
+
+    FILE* sizeAvgs = fopen(avgsName, "w");
+    fprintf(sizeAvgs, "queryIdx\tCandAvgLen\tCandAvgLenDb\n");
+
+
+    double sizeSumAll = 0;
+    long long int numAllCandidates = 0;
+    double avgSizeDbSum = 0;
+
+    for (int i = 0; i < indices->size(); ++i) {
+        fprintf(sizes, ">Query: %d\n", i);
+        // fprintf(sizeAvgs, ">Query: %d\n", i);
+
+        long long int sizeSum = 0;
+        int size = indices->at(i).size();
+        numAllCandidates += size;
+
+        for (int j = 0; j < size; ++j) {
+            int targetIdx = (*indices)[i][j];
+            int targetLen = chainGetLength(database[targetIdx]);
+            sizeSum += targetLen;
+
+            fprintf(sizes, "%d ", targetLen);
+        }
+
+        fprintf(sizes, "Total size: %d\n", sizeSum);
+
+        double avgSize = sizeSum / (double)size;
+        double avgSizeDb = sizeSum / (double) dbLen;
+        avgSizeDbSum += avgSizeDb;
+
+        fprintf(sizeAvgs, "%d\t%.6lf\t%.6lf\n", i, avgSize, avgSizeDb);
+        // sizeSumAll += avgSize;
+    }
+
+    fprintf(stderr, "Average CandAvgLenDb: %.6lf\n", avgSizeDbSum / indices->size());
+
+    delete[] sizesName;
+    delete[] avgsName;
+
+    fclose(sizes);
+    fclose(sizeAvgs);
+}
+
+static void candidatesLongestTargets(Data* indices, Chain** queries, 
+    set<int>& longestTargets, int numLongest) {
+
+    char* longName = new char[BUFFER];
+    snprintf(longName, BUFFER, "candidates-longest%d.out",
+        numLongest);
+
+    FILE* longOut = fopen(longName, "w");
+    long long int sumNumAll = 0;
+    fprintf(longOut, "query_id\tqueryLen\tnumLongest\n");
+
+    for (int i = 0; i < indices->size(); ++i) {
+        // fprintf(longOut, ">Query: %d\n", i);
+
+        int size = indices->at(i).size();
+        int count = 0;
+
+        for (int j = 0; j < size; ++j) {
+            int targetIdx = (*indices)[i][j];
+            if (longestTargets.find(targetIdx) != longestTargets.end()) {
+                ++count;
+            }
+        }
+
+        sumNumAll += count;
+        int queryLen = chainGetLength(queries[i]);
+        fprintf(longOut, "%d\t%d\t%d\n", i, queryLen, count);
+    }
+
+    fprintf(stderr, "Average num of long targets: %.6lf\n", 
+        (double)sumNumAll / indices->size());
+
+    fclose(longOut);
+    delete[] longName;
+}
 // ***************************************************************************

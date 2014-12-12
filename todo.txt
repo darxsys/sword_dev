@@ -1,0 +1,2 @@
+prosjecna duljina kandidata u odnosu na bazu: 1) svaki kveri, 2) prosjecno po kveriju
+

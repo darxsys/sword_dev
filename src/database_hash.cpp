@@ -150,9 +150,9 @@ static void readInfoFile(int** volumes, int* volumesLen, int** targetsLens,
     int* scoresLen, char* databasePath, int seedLen);
 
 static void candidatesStatisticsOutput(Data* indices, Chain** database, 
-    long long dbLen, int numLongest);
+    long long dbLen, int numLongest, int maxCandidates);
 static void candidatesLongestTargets(Data* indices, Chain** queries, 
-    set<int>& longestTargets, int numLongest);
+    set<int>& longestTargets, int numLongest, int maxCandidates);
 // ***************************************************************************
 // PUBLIC
 
@@ -173,20 +173,26 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     // int numLongest = 500;
     vector<ChainIdx> allChains;
 
-    // FILE* hist = fopen("db-sizes.out", "w");
+    FILE* hist = fopen("db-sizes.out", "w");
     long long dbLen = 0;
     for (int i = 0; i < databaseLen; ++i) {
         int targetLen = chainGetLength(database[i]);
         allChains.push_back(ChainIdx(i, targetLen));
 
         dbLen += targetLen;
+        fprintf(hist, "%d\t%d\n", i, targetLen);
     }
 
     fprintf(stderr, "DB Len: %lld\n", dbLen);
 
-    // fclose(hist);
+    fclose(hist);
 
     sort(allChains.begin(), allChains.end(), sort_by_length());
+
+    fprintf(stderr, "Sorted db sizes:\n");
+    for (int i = 0; i < dbLen; ++i) {
+        fprintf(stderr, "%d\n", allChains[i].length);
+    }
 
     set<int> longestTargets;
     for (int i = 0; i < MIN(numLongest, allChains.size()); ++i) {
@@ -366,8 +372,11 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     timerPrint("  seedsTime", seedsTotal);
     timerPrint("  deleteTime", deleteTotal);
 
-    candidatesStatisticsOutput(indices, database, dbLen, numLongest);
-    candidatesLongestTargets(indices, queries, longestTargets, numLongest);
+    candidatesStatisticsOutput(indices, database, dbLen, 
+        numLongest, maxCandidates);
+
+    candidatesLongestTargets(indices, queries, longestTargets, 
+        numLongest. maxCandidates);
 
     return static_cast<void*>(indices);
 }
@@ -919,17 +928,17 @@ static void readVolume(int** hash, int** positions, char* databasePath, int seed
 
 
 static void candidatesStatisticsOutput(Data* indices, Chain** database, 
-    long long dbLen, int numLongest) {
+    long long dbLen, int numLongest, int maxCandidates) {
 
     char* sizesName = new char[BUFFER];
-    snprintf(sizesName, BUFFER, "candidates-sizes%d.out",
-        numLongest);
+    snprintf(sizesName, BUFFER, "candidates-%d-sizes%d.out",
+        maxCandidates, numLongest);
 
     FILE* sizes = fopen(sizesName, "w");
 
     char* avgsName = new char[BUFFER];
-    snprintf(avgsName, BUFFER, "candidates-avgs%d.out",
-        numLongest);
+    snprintf(avgsName, BUFFER, "candidates-%d-avgs%d.out",
+        maxCandidates, numLongest);
 
     FILE* sizeAvgs = fopen(avgsName, "w");
     fprintf(sizeAvgs, "queryIdx\tCandAvgLen\tCandAvgLenDb\n");
@@ -975,11 +984,11 @@ static void candidatesStatisticsOutput(Data* indices, Chain** database,
 }
 
 static void candidatesLongestTargets(Data* indices, Chain** queries, 
-    set<int>& longestTargets, int numLongest) {
+    set<int>& longestTargets, int numLongest, int maxCandidates) {
 
     char* longName = new char[BUFFER];
-    snprintf(longName, BUFFER, "candidates-longest%d.out",
-        numLongest);
+    snprintf(longName, BUFFER, "candidates%d-longest%d.out",
+        maxCandidates, numLongest);
 
     FILE* longOut = fopen(longName, "w");
     long long int sumNumAll = 0;

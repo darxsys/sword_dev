@@ -17,6 +17,8 @@ using namespace std;
 #include "utils.h"
 #include "ac_node.h"
 #include "ac_automaton.h"
+#include "table_node.h"
+#include "ac_table.h"
 #include "database_hash.h"
 #include "swsharp/swsharp.h"
 
@@ -141,6 +143,7 @@ static void candidatesCreate(Candidates** candidates, int len);
 static void candidatesDelete(Candidates* candidates);
 
 static void* findIndices(void* param);
+static void* findIndicesTable(void* param);
 static void* findIndicesHash(void* param);
 
 static void readVolume(int** hash, int** positions, char* databasePath, int seedLen,
@@ -153,6 +156,8 @@ static void candidatesStatisticsOutput(Data* indices, Chain** database,
     long long dbLen, int numLongest, int maxCandidates);
 static void candidatesLongestTargets(Data* indices, Chain** queries, 
     set<int>& longestTargets, int numLongest, int maxCandidates);
+
+static inline int getxy(int i, int j, int numCols);
 // ***************************************************************************
 // PUBLIC
 
@@ -171,33 +176,33 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
     /* Find 1000 longest sequences, also output sizes for histograms */
     // int numLongest = 500;
-    vector<ChainIdx> allChains;
+    // vector<ChainIdx> allChains;
 
-    FILE* hist = fopen("db-sizes.out", "w");
-    long long dbLen = 0;
-    for (int i = 0; i < databaseLen; ++i) {
-        int targetLen = chainGetLength(database[i]);
-        allChains.push_back(ChainIdx(i, targetLen));
+    // FILE* hist = fopen("db-sizes.out", "w");
+    // long long dbLen = 0;
+    // for (int i = 0; i < databaseLen; ++i) {
+    //     int targetLen = chainGetLength(database[i]);
+    //     allChains.push_back(ChainIdx(i, targetLen));
 
-        dbLen += targetLen;
-        fprintf(hist, "%d\t%d\n", i, targetLen);
-    }
+    //     dbLen += targetLen;
+    //     fprintf(hist, "%d\t%d\n", i, targetLen);
+    // }
 
-    fprintf(stderr, "DB Len: %lld\n", dbLen);
+    // fprintf(stderr, "DB Len: %lld\n", dbLen);
 
-    fclose(hist);
+    // fclose(hist);
 
-    sort(allChains.begin(), allChains.end(), sort_by_length());
+    // sort(allChains.begin(), allChains.end(), sort_by_length());
 
-    fprintf(stderr, "Sorted db sizes:\n");
-    for (int i = 0; i < dbLen; ++i) {
-        fprintf(stderr, "%d\n", allChains[i].length);
-    }
+    // fprintf(stderr, "Sorted db sizes:\n");
+    // for (int i = 0; i < dbLen; ++i) {
+    //     fprintf(stderr, "%d\n", allChains[i].length);
+    // }
 
-    set<int> longestTargets;
-    for (int i = 0; i < MIN(numLongest, allChains.size()); ++i) {
-        longestTargets.insert(allChains[i].idx);
-    }
+    // set<int> longestTargets;
+    // for (int i = 0; i < MIN(numLongest, allChains.size()); ++i) {
+    //     longestTargets.insert(allChains[i].idx);
+    // }
 
     timerStart(&heuristicTimer);
     timerStart(&initTimer);
@@ -372,11 +377,11 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     timerPrint("  seedsTime", seedsTotal);
     timerPrint("  deleteTime", deleteTotal);
 
-    candidatesStatisticsOutput(indices, database, dbLen, 
-        numLongest, maxCandidates);
+    // candidatesStatisticsOutput(indices, database, dbLen, 
+    //     numLongest, maxCandidates);
 
-    candidatesLongestTargets(indices, queries, longestTargets, 
-        numLongest. maxCandidates);
+    // candidatesLongestTargets(indices, queries, longestTargets, 
+    //     numLongest. maxCandidates);
 
     return static_cast<void*>(indices);
 }
@@ -723,6 +728,200 @@ static void* findIndices(void* param) {
     return NULL;
 }
 
+static void* findIndicesTable(void* param) {
+
+    // **********
+
+    Timeval threadTimer, initTimer, automatonTimer, diagTimer, 
+        candidatesTimer, indicesTimer, deleteTimer;
+    long long threadTotal = 0, initTotal = 0, automatonTotal = 0,
+        diagTotal = 0, candidatesTotal = 0, indicesTotal = 0,
+        deleteTotal = 0;
+
+    // **********
+
+    timerStart(&threadTimer);
+    timerStart(&initTimer);
+
+    ThreadData* threadData = static_cast<ThreadData*>(param);
+
+    int taskStart = threadData->taskStart;
+    int taskEnd = threadData->taskEnd;
+
+    Chain** queries = threadData->queries;
+
+    Chain** database = threadData->database;
+    int databaseLen = threadData->databaseLen;
+
+    int seedLen = threadData->seedLen;
+    int maxCandidates = threadData->maxCandidates;
+
+    int* seedScores = threadData->seedScores;
+    Seeds* seeds = threadData->seeds;
+
+    Candidates* candidates = threadData->candidates;
+    Data* indices = threadData->indices;
+
+    //
+    // Create your structures here or in loop
+    //
+
+    int* diagScores = new int[90000];
+
+    initTotal += timerStop(&initTimer);
+
+    for (int queryIdx = taskStart; queryIdx < taskEnd; ++queryIdx) {
+
+        Chain* query = queries[queryIdx];
+        int queryLen = chainGetLength(query);
+        const char* qcodes = chainGetCodes(query);
+
+        timerStart(&automatonTimer);
+
+        TabNode* automaton = automatonCreateTable(seeds, seedLen, query);
+
+        automatonTotal += timerStop(&automatonTimer);
+
+        (*candidates)[queryIdx].reserve(maxCandidates);
+
+        double min = (*candidates)[queryIdx].size() == maxCandidates ?
+            (*candidates)[queryIdx][maxCandidates - 1].score : 100000000;
+
+        for (int targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
+
+            int state = 0;
+            int* table = automaton->table;
+
+            Chain* target = database[targetIdx];
+            int targetLen = chainGetLength(target);
+            const char* tcodes = chainGetCodes(target);
+
+            int dLen = queryLen + targetLen - 2 * seedLen + 1;
+
+            // memset(diagScores, 0, sizeof(int) * dLen);
+            for (int i = 0; i < dLen; ++i) {
+                diagScores[i] = 0;
+            }
+
+            timerStart(&automatonTimer);
+
+            int maxScore = 0;
+
+            for (int k = 0; k < targetLen; ++k) {
+                int c = static_cast<int>(tcodes[k]);
+
+                while(table[getxy(state, c, TABLE_WIDTH)] == 0 && state != 0) {
+                    // fprintf(stderr, "no transition\n");
+                    state = table[getxy(state, FAIL_COL, TABLE_WIDTH)];
+                }
+
+                if (state == table[getxy(state, c, TABLE_WIDTH)]) {
+                    // printf("Character %c continuing\n", c + 'A');
+                    continue;
+                }
+
+                state = table[getxy(state, c, TABLE_WIDTH)];
+                // fprintf(stderr, "Current state: %d\n", state);
+                if (table[getxy(state, FINAL_COL, TABLE_WIDTH)]) {
+                    // fprintf(stderr, "A hit. Sign: %c\n", c + 'A');
+                    int diag;
+                    vector<uint16>& positions = automaton->positions[state];
+                    uint16 seedCode = positions[0];
+                    for (int queryLocs = 1; queryLocs < positions.size(); ++queryLocs) {
+                        int location = positions[queryLocs];
+                        diag = (k - seedLen + 1 - location + dLen) % dLen;
+
+                        // diagScores[diag] += seedScores[seedCode];
+                        ++diagScores[diag];
+
+                        if (diagScores[diag] > maxScore) {
+                            maxScore = diagScores[diag];
+                        }
+                    }
+                }
+            }
+
+            automatonTotal += timerStop(&automatonTimer);
+            timerStart(&diagTimer);
+
+            //
+            // Find the maximum count or score
+            //
+            double score = maxScore;
+
+            if ((*candidates)[queryIdx].size() < maxCandidates || score > min) {
+                // int targetLen = chainGetLength(database[targetIdx]);
+                (*candidates)[queryIdx].emplace_back(score, targetIdx);
+
+                min = MIN(score, min);
+            }
+
+            diagTotal += timerStop(&diagTimer);
+
+            timerStart(&deleteTimer);
+
+            deleteTotal += timerStop(&deleteTimer);
+        }
+
+        timerStart(&candidatesTimer);
+
+        if ((*candidates)[queryIdx].size() > maxCandidates) {
+
+            stable_sort(
+                (*candidates)[queryIdx].begin(),
+                (*candidates)[queryIdx].end(),
+                sort_by_score());
+
+            vector<Candidate> temp(
+                (*candidates)[queryIdx].begin(),
+                (*candidates)[queryIdx].begin() + maxCandidates);
+
+            (*candidates)[queryIdx].swap(temp);
+        }
+
+        candidatesTotal += timerStop(&candidatesTimer);
+        timerStart(&indicesTimer);
+
+        if (threadData->extractIndices == 1) {
+            (*indices)[queryIdx].reserve((*candidates)[queryIdx].size());
+
+            for (int i = 0; i < (*candidates)[queryIdx].size(); ++i) {
+                (*indices)[queryIdx].emplace_back((*candidates)[queryIdx][i].idx);
+            }   
+
+            vector<Candidate>().swap((*candidates)[queryIdx]);
+
+            if ((*indices)[queryIdx].size() == maxCandidates) {
+                sort((*indices)[queryIdx].begin(), (*indices)[queryIdx].end());
+            }
+        }
+
+        indicesTotal += timerStop(&indicesTimer);
+        timerStart(&automatonTimer);
+
+        automatonDeleteTable(automaton);
+
+        automatonTotal += timerStop(&automatonTimer);
+    }
+
+    delete threadData;
+    delete[] diagScores;
+
+    threadTotal += timerStop(&threadTimer);
+
+    if (taskStart == 0 && taskEnd != 0) {
+        timerPrint("threadTime", threadTotal);
+        timerPrint("  initTime", initTotal);
+        timerPrint("  [D]automatonTime", automatonTotal);
+        timerPrint("  [D]diagTime", diagTotal);
+        timerPrint("  [D]deleteTime", deleteTotal);
+        timerPrint("  candidatesTime", candidatesTotal);
+        timerPrint("  indicesTime", indicesTotal);
+    }
+
+    return NULL;
+}
+
 static void* findIndicesHash(void* param) {
     ThreadData* threadData = static_cast<ThreadData*>(param);
 
@@ -1018,4 +1217,9 @@ static void candidatesLongestTargets(Data* indices, Chain** queries,
     fclose(longOut);
     delete[] longName;
 }
+
+static inline int getxy(int i, int j, int numCols) {
+    return i * numCols + j;
+}
+
 // ***************************************************************************

@@ -1,20 +1,25 @@
 #ifndef __UTILSH__
 #define __UTILSH__
 
-#include <vector>
-
 #include "swsharp/swsharp.h"
-#include "database_hash.h"
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef std::vector<std::vector<char*> > Seeds;
+typedef std::vector<std::vector<int> > Data;
 
-extern void seedsCreate(Seeds** seeds, int seedLen, int permute, Scorer* scorer);
+extern void seedsCreate(Data** seeds, int seedLen, int permute, Scorer* scorer);
 
-extern void seedsDelete(Seeds* seeds);
+extern void seedsCreateNew(Data** seeds, int seedLen, int permute, Scorer* scorer);
+
+extern void seedsDelete(Data* seeds);
+
+extern void dataCreate(Data** data, int len);
+
+extern void dataDelete(Data* data);
+
 
 #ifdef __cplusplus
 }

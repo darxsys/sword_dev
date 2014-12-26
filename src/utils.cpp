@@ -5,22 +5,22 @@
 
 #include <vector>
 #include <cstring>
-#include <algorithm>
 
 #include "utils.h"
-#include "database_hash.h"
 #include "swsharp/swsharp.h"
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
+using namespace std;
 
 #define SEED_IDX_LEN(n) ((n) == 3 ? 26426 : ((n) == 4 ? 845626 : 27060026))
 #define SEED_THRESHOLD(n) ((n) == 3 ? 11 : ((n) == 4 ? 13 : 15))
 
-#define A 40
 #define AA 20
 
-using namespace std;
+// extract mask
+static const int EMASK[] = { 0x1f, 0x3e0, 0x7c00, 0xf8000, 0x1f00000 };
+
+// delete mask
+static const int DMASK[] = { 0x1ffffe0, 0x1fffc1f, 0x1ff83ff, 0x1f07fff, 0xfffff };
 
 static const char AMINO_ACIDS[] = {
     'A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K',
@@ -30,29 +30,31 @@ static const char AMINO_ACIDS[] = {
 // ***************************************************************************
 // PUBLIC
 
-extern void seedsCreate(Seeds** seeds, int seedLen, int permute, Scorer* scorer);
+extern void seedsCreate(Data** seeds, int seedLen, int permute, Scorer* scorer);
 
-extern void seedsDelete(Seeds* seeds);
+extern void seedsCreateNew(Data** seeds, int seedLen, int permute, Scorer* scorer);
+
+extern void seedsDelete(Data* seeds);
+
+extern void dataCreate(Data** data, int len);
+
+extern void dataDelete(Data* data);
 
 // ***************************************************************************
 
 // ***************************************************************************
 // PRIVATE
 
-static int seedCode(char* seed, int seedLen);
+static int seedCode(vector<char>* seed);
 
-static void kmersCreate(char*** kmers, int* kmersLen, int seedLen);
+static void kmersCreate(int** kmers, int* kmersLen, int seedLen);
 
-static int kmersCreateRec(char*** kmers, int kmerIdx, vector<char>* kmer,
-    int n, int seedLen);
+static int kmersCreateRec(int** kmers, int kmerIdx, vector<char>* kmer,
+    int n);
 
-static void kmersDelete(char** kmers, int kmersLen);
+static void kmersDelete(int* kmers);
 
-static int permutation(char* kmer1, char* kmer2, int seedLen, Scorer* scorer);
-
-static void dataCreate(Seeds** data, int len);
-
-static void dataDelete(Seeds* data);
+static int permutation(int code1, int code2, int seedLen, Scorer* scorer);
 
 // ***************************************************************************
 
@@ -61,54 +63,87 @@ static void dataDelete(Seeds* data);
 // ***************************************************************************
 // PUBLIC
 
-extern void seedsCreate(Seeds** seeds, int seedLen, int permute, Scorer* scorer) {
+extern void seedsCreate(Data** seeds, int seedLen, int permute, Scorer* scorer) {
 
     dataCreate(seeds, SEED_IDX_LEN(seedLen));
 
-    char** kmers = NULL;
+    int* kmers = NULL;
     int kmersLen = 0;
     kmersCreate(&kmers, &kmersLen, seedLen);
 
     int threshold = SEED_THRESHOLD(seedLen);
 
-    int idxi, idxj;
-    int codei, codej;
-
     for (int i = 0; i < kmersLen; ++i) {
-        codei = seedCode(kmers[i], seedLen);
-        idxi = (**seeds)[codei].size();
-
-        (**seeds)[codei].push_back(new char[seedLen + 1]);
-        strcpy((**seeds)[codei][idxi], kmers[i]);
+        (**seeds)[kmers[i]].push_back(kmers[i]);
     }
 
     if (permute == 1) {
         for (int i = 0; i < kmersLen; ++i) {
             for (int j = i; j < kmersLen; ++j) {
-                if (i == j)  continue;
+                if (i == j) continue;
 
                 if (permutation(kmers[i], kmers[j], seedLen, scorer) >= threshold) {
-                    codei = seedCode(kmers[i], seedLen);
-                    idxi = (**seeds)[codei].size();
-
-                    (**seeds)[codei].push_back(new char[seedLen + 1]);
-                    strcpy((**seeds)[codei][idxi], kmers[j]);
-
-                    codej = seedCode(kmers[j], seedLen);
-                    idxj = (**seeds)[codej].size();
-
-                    (**seeds)[codej].push_back(new char[seedLen + 1]);
-                    strcpy((**seeds)[codej][idxj], kmers[i]);
+                    (**seeds)[kmers[i]].push_back(kmers[j]);
+                    (**seeds)[kmers[j]].push_back(kmers[i]);
                 }
             }
         }
     }
 
-    kmersDelete(kmers, kmersLen);
+    kmersDelete(kmers);
 }
 
-extern void seedsDelete(Seeds* seeds) {
+extern void seedsCreateNew(Data** seeds, int seedLen, int permute, Scorer* scorer) {
+
+    dataCreate(seeds, SEED_IDX_LEN(seedLen));
+
+    int* kmers = NULL;
+    int kmersLen = 0;
+    kmersCreate(&kmers, &kmersLen, seedLen);
+
+    int threshold = SEED_THRESHOLD(seedLen);
+
+    for (int i = 0; i < kmersLen; ++i) {
+        (**seeds)[kmers[i]].push_back(kmers[i]);
+    }
+
+    if (permute == 1) {
+        for (int i = 0; i < kmersLen; ++i) {
+
+            for (int j = 0; j < seedLen; ++j) {
+                int aa = (kmers[i] & EMASK[j]) >> (j * 5);
+
+                for (int k = 0; k < AA; ++k) {
+                    if (AMINO_ACIDS[k] == aa + 'A') continue;
+
+                    int tmp = ((kmers[i] & DMASK[j]) | ((AMINO_ACIDS[k] - 'A') << (j * 5)));
+
+                    if (permutation(kmers[i], tmp, seedLen, scorer) >= threshold) {
+                        (**seeds)[kmers[i]].push_back(tmp);
+                    }
+                }
+            }
+        }
+    }
+
+    kmersDelete(kmers);
+}
+
+extern void seedsDelete(Data* seeds) {
     dataDelete(seeds);
+}
+
+extern void dataCreate(Data** data, int len) {
+    vector<int> vi;
+    (*data) = new Data(len, vi);
+}
+
+extern void dataDelete(Data* data) {
+    for (unsigned int i = 0; i < data->size(); ++i) {
+        vector<int>().swap((*data)[i]);
+    }
+    data->clear();
+    delete data;
 }
 
 // ***************************************************************************
@@ -116,84 +151,61 @@ extern void seedsDelete(Seeds* seeds) {
 // ***************************************************************************
 // PRIVATE
 
-static int seedCode(char* seed, int seedLen) {
+static int seedCode(vector<char>* seed) {
 
     int code = 0;
-    int start = 5 * (seedLen - 1);
+    int start = 5 * (seed->size() - 1);
 
-    for (int i = 0; i < seedLen; ++i) {
-        code += static_cast<int>(toupper(seed[i] - 'A')) << (start - 5 * i);
+    for (unsigned int i = 0; i < seed->size(); ++i) {
+        code += static_cast<int>((*seed)[i] - 'A') << (start - 5 * i);
     }
 
     return code;
 }
 
-static void kmersCreate(char*** kmers, int* kmersLen, int seedLen) {
+static void kmersCreate(int** kmers, int* kmersLen, int seedLen) {
 
     (*kmersLen) = pow(AA, seedLen);
-    (*kmers) = new char*[*kmersLen];
+    (*kmers) = new int[*kmersLen];
 
     vector<char> kmer;
 
-    kmersCreateRec(kmers, 0, &kmer, seedLen, seedLen);
+    kmersCreateRec(kmers, 0, &kmer, seedLen);
 }
 
-static int kmersCreateRec(char*** kmers, int kmerIdx, vector<char>* kmer,
-    int n, int seedLen) {
+static int kmersCreateRec(int** kmers, int kmerIdx, vector<char>* kmer,
+    int n) {
 
     if (n == 0) {
-        (*kmers)[kmerIdx] = new char[seedLen + 1];
-        for (int i = 0; i < seedLen; ++i) {
-            (*kmers)[kmerIdx][i] = (*kmer)[i];
-        }
-        (*kmers)[kmerIdx][seedLen] = '\0';
+        (*kmers)[kmerIdx] = seedCode(kmer);
         return kmerIdx + 1;
     }
 
     for (int i = 0; i < AA; ++i) {
         kmer->push_back(AMINO_ACIDS[i]);
-        kmerIdx = kmersCreateRec(kmers, kmerIdx, kmer, n - 1, seedLen);
+        kmerIdx = kmersCreateRec(kmers, kmerIdx, kmer, n - 1);
         kmer->pop_back();
     }
 
     return kmerIdx;
 }
 
-static void kmersDelete(char** kmers, int kmersLen) {
-    for (int i = 0; i < kmersLen; ++i) {
-        delete[] kmers[i];
-    }
+static void kmersDelete(int* kmers) {
     delete[] kmers;
 }
 
-static int permutation(char* kmer1, char* kmer2, int seedLen, Scorer* scorer) {
+static int permutation(int code1, int code2, int seedLen, Scorer* scorer) {
 
     int score = 0;
 
     for (int i = 0; i < seedLen; ++i) {
-        score += scorerScore(scorer, scorerEncode(kmer1[i]),
-            scorerEncode(kmer2[i]));
+        int aa1 = (code1 & EMASK[i]) >> (i * 5);
+        int aa2 = (code2 & EMASK[i]) >> (i * 5);
+
+        score += scorerScore(scorer, aa1, aa2);
     }
 
     return score;
-}
-
-static void dataCreate(Seeds** data, int len) {
-    vector<char*> vi;
-    (*data) = new Seeds(len, vi);
-}
-
-static void dataDelete(Seeds* data) {
-    for (unsigned int i = 0; i < data->size(); ++i) {
-        if ((*data)[i].size() > 0) {
-            for (unsigned j = 0; j < (*data)[i].size(); ++j) {
-                delete[] (*data)[i][j];
-            }
-            vector<char*>().swap((*data)[i]);
-        }
-    }
-    data->clear();
-    delete data;
 }
 
 // ***************************************************************************

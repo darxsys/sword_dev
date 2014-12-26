@@ -25,8 +25,8 @@ Contact the swsharp author by mkorpar@gmail.com.
 #include <stdlib.h>
 #include <string.h>
 
-#include "database_hash.h"
 #include "timer.h"
+#include "database_heuristics.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
 
@@ -66,8 +66,6 @@ static struct option options[] = {
     {"cpu", no_argument, 0, 'P'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
-    {"hash", no_argument, 0, 'x'},
-    {"longest", no_argument, 0, 'y'},
     {"permute", no_argument, 0, 'p'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
@@ -118,7 +116,7 @@ int main(int argc, char* argv[]) {
 
     int algorithm = SW_ALIGN;
 
-    int cache = 1;
+    int cache = 0;
 
     int forceCpu = 0;
 
@@ -127,12 +125,9 @@ int main(int argc, char* argv[]) {
 
     int permute = 0;
 
-    int useHash = 0;
-    int numLongest = 1000;
-
     while (1) {
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:y:h", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:ph", options, NULL);
 
         if (argument == -1) {
             break;
@@ -181,19 +176,12 @@ int main(int argc, char* argv[]) {
         case 's':
             seedLen = atoi(optarg);
             break;
-        case 'd':
-            maxCandidates = atoi(optarg);
-            break;
-        case 'x':
-            useHash = 1;
-            break;    
-        case 'y':
-            numLongest = atoi(optarg);
-            break;
         case 'p':
             permute = 1;
             break;
-        case 'h':
+        case 'd':
+            maxCandidates = atoi(optarg);
+            break;
         default:
             help();
             return -1;
@@ -227,10 +215,6 @@ int main(int argc, char* argv[]) {
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
 
-    // void* automata = NULL;
-    // int automataLen = queriesLen;
-    // automata = automatonCreateAutomata(seedLen, queries, queriesLen, permute, scorer);
-
     Chain** database = NULL;
     int databaseLen = 0;
     int databaseStart = 0;
@@ -238,11 +222,8 @@ int main(int argc, char* argv[]) {
 
     threadPoolInitialize(cardsLen + 8);
 
-    fprintf(stderr, "Num queries: %d\n", queriesLen);
-
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        seedLen, maxCandidates, permute, scorer, useHash, databasePath, numLongest);
-        // automata, automataLen, seedLen, maxCandidates, scorer);
+        seedLen, maxCandidates, permute, scorer);
 
     deleteFastaChains(database, databaseLen);
 
@@ -384,13 +365,10 @@ int main(int argc, char* argv[]) {
 
     deleteFastaChains(queries, queriesLen);
 
-    // automatonDeleteAutomata(automata, automataLen);
-
     free(cards);
 
     return 0;
 }
-
 
 static void getCudaCards(int** cards, int* cardsLen, char* optarg) {
 
@@ -507,6 +485,8 @@ static void help() {
     "    -p, --permute <int>\n"
     "        permuting each seed position if the substitution score is greater\n"
     "        than input value\n"
+    "    -n, --agroup-length <int>\n"
+    "        number of queries in automaton"
     "    -h, -help\n"
     "        prints out the help\n");
 }

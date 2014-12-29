@@ -13,11 +13,8 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
 
 extern void databaseIndicesDelete(void* indices_);
 
-extern int* filteredDatabaseCreate(Chain*** filteredDatabase,
-    int* filteredDatabaseLen, void* indices_, int queryIdx,
-    Chain** database, int databaseLen, int returnUsed);
-
-extern void filteredDatabaseDelete(Chain** filteredDatabase);
+extern void partialIndicesCreate(int** partialIndices, int* partialIndicesLen,
+    void* indices_, int queryIdx, int databaseLen);
 
 #ifdef __cplusplus
 }

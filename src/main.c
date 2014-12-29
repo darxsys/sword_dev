@@ -64,6 +64,7 @@ static struct option options[] = {
     {"algorithm", required_argument, 0, 'A'},
     {"nocache", no_argument, 0, 'C'},
     {"cpu", no_argument, 0, 'P'},
+    {"threads", required_argument, 0, 'T'},
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
     {"permute", no_argument, 0, 'p'},
@@ -120,6 +121,8 @@ int main(int argc, char* argv[]) {
 
     int forceCpu = 0;
 
+    int threads = 8;
+
     int seedLen = 5;
     int maxCandidates = 5000;
 
@@ -127,7 +130,7 @@ int main(int argc, char* argv[]) {
 
     while (1) {
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:ph", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:phT:", options, NULL);
 
         if (argument == -1) {
             break;
@@ -173,6 +176,9 @@ int main(int argc, char* argv[]) {
         case 'P':
             forceCpu = 1;
             break;
+        case 'T':
+            threads = atoi(optarg);
+            break;
         case 's':
             seedLen = atoi(optarg);
             break;
@@ -208,6 +214,9 @@ int main(int argc, char* argv[]) {
 
     ASSERT(maxEValue > 0, "invalid evalue");
 
+    ASSERT(threads >= 0, "invalid thread number");
+    threadPoolInitialize(threads);
+
     Scorer* scorer = NULL;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
 
@@ -217,10 +226,7 @@ int main(int argc, char* argv[]) {
 
     Chain** database = NULL;
     int databaseLen = 0;
-    int databaseStart = 0;
     readFastaChains(&database, &databaseLen, databasePath);
-
-    threadPoolInitialize(cardsLen + 8);
 
     void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
         seedLen, maxCandidates, permute, scorer);
@@ -248,74 +254,103 @@ int main(int argc, char* argv[]) {
 
         // Chain** database = NULL;
         // int databaseLen = 0;
-        // int databaseStart = 0;
+        database = NULL;
+        databaseLen = 0;
+        int databaseStart = 0;
+        int databaseEnd = 0;
 
         FILE* handle;
         int serialized;
 
-        readFastaChainsPartInit(&database, &databaseLen, &handle,
-            &serialized, databasePath);
+        readFastaChainsPartInit(&database, &databaseLen, &handle, &serialized, databasePath);
+
+        size_t cudaMemory = cudaMinimalGlobalMemory(cards, cardsLen);
+        size_t cudaMemoryMax = cudaMemory - 200000000; // ~200MB breathing space
+        size_t cudaMemoryStep = cudaMemoryMax * 0.075;
 
         int i, j;
 
         while (1) {
 
-            int status = readFastaChainsPart(&database, &databaseLen, handle,
-                serialized, 2000000000);
+            int status = 1;
+
+            if (cardsLen == 0) {
+
+                status &= readFastaChainsPart(&database, &databaseLen, handle,
+                    serialized, 1000000000); // ~1GB
+
+            } else {
+
+                while (1) {
+
+                    databaseLen = databaseEnd;
+
+                    status &= readFastaChainsPart(&database, &databaseLen, handle,
+                        serialized, cudaMemoryStep);
+
+                    size_t cudaMemoryMin = chainDatabaseGpuMemoryConsumption(
+                        database + databaseStart, databaseLen - databaseStart);
+
+                    // evalue
+                    cudaMemoryMin += 16 * (databaseLen - databaseStart);
+
+                    if (cudaMemoryMin > cudaMemoryMax || 
+                        (status == 1 && databaseEnd > databaseStart && cudaMemoryMin > 500000000)) {
+
+                        int holder = databaseLen;
+                        databaseLen = databaseEnd;
+                        databaseEnd = holder;
+
+                        if (databaseLen <= databaseStart) {
+                            ASSERT(0, "cannot read database into CUDA memory");
+                        }
+
+                        status = 1;
+
+                        break;
+                    } else {
+                        databaseEnd = databaseLen;
+                    }
+
+                    if (status == 0) {
+                        break;
+                    }
+                }
+            }
+
+            ChainDatabase* chainDatabase = chainDatabaseCreate(database, 
+                databaseStart, databaseLen - databaseStart, cards, cardsLen);
 
             DbAlignment*** dbAlignmentsPart =
                 (DbAlignment***) malloc(queriesLen * sizeof(DbAlignment**));
             int* dbAlignmentsPartLens = (int*) malloc(queriesLen * sizeof(int));
 
-            Chain** filteredDatabase = NULL;
-            int filteredDatabaseLen = 0;
-
-            ChainDatabase* chainDatabase = NULL;
-
-            int* usedIndices = NULL;
-            char* usedMask = (char*) calloc(databaseLen, sizeof(char));
-
             for (i = 0; i < queriesLen; ++i) {
 
                 timerStart(&dbTimer);
 
-                usedIndices = filteredDatabaseCreate(&filteredDatabase,
-                    &filteredDatabaseLen, indices, i, database, databaseLen,  1);
+                int* indexes = 0;
+                int indexesLen = 0;
+
+                partialIndicesCreate(&indexes, &indexesLen, indices, i, databaseLen);
 
                 dbTotal += timerStop(&dbTimer);
 
-                if (filteredDatabaseLen == 0) {
+                if (indexesLen == 0) {
                     dbAlignmentsPart[i] = NULL;
                     dbAlignmentsPartLens[i] = 0;
                     continue;
                 }
 
-                chainDatabase = chainDatabaseCreate(filteredDatabase, 0,
-                    filteredDatabaseLen, cards, cardsLen);
-
                 alignDatabase(&dbAlignmentsPart[i], &dbAlignmentsPartLens[i], algorithm, queries[i],
                     chainDatabase, scorer, maxAlignments, valueFunction, (void*) eValueParams,
-                    maxEValue, NULL, 0, cards, cardsLen, NULL);
+                    maxEValue, indexes, indexesLen, cards, cardsLen, NULL);
 
                 timerStart(&dbTimer);
 
-                if (usedIndices != NULL) {
-                    for (j = 0; j < dbAlignmentsPartLens[i]; ++j) {
-
-                        DbAlignment* dbAlignment = dbAlignmentsPart[i][j];
-                        int targetIdx = dbAlignmentGetTargetIdx(dbAlignment);
-
-                        usedMask[usedIndices[targetIdx]] = 1;
-                    }
-
-                    free(usedIndices);
-                }
+                free(indexes);
 
                 dbTotal += timerStop(&dbTimer);
-
-                chainDatabaseDelete(chainDatabase);
-
-                filteredDatabaseDelete(filteredDatabase);
             }
 
             if (dbAlignments == NULL) {
@@ -327,7 +362,26 @@ int main(int argc, char* argv[]) {
                 deleteShotgunDatabase(dbAlignmentsPart, dbAlignmentsPartLens, queriesLen);
             }
 
-            for (i = databaseStart; i < databaseLen; ++i) {
+            chainDatabaseDelete(chainDatabase);
+
+            if (status == 0) {
+                break;
+            }
+
+            // delete all unused chains
+            char* usedMask = (char*) calloc(databaseLen, sizeof(char));
+
+            for (i = 0; i < queriesLen; ++i) {
+                for (j = 0; j < dbAlignmentsLens[i]; ++j) {
+
+                    DbAlignment* dbAlignment = dbAlignments[i][j];
+                    int targetIdx = dbAlignmentGetTargetIdx(dbAlignment);
+
+                    usedMask[targetIdx] = 1;
+                }
+            }
+
+            for (i = 0; i < databaseLen; ++i) {
                 if (!usedMask[i] && database[i] != NULL) {
                     chainDelete(database[i]);
                     database[i] = NULL;
@@ -335,10 +389,6 @@ int main(int argc, char* argv[]) {
             }
 
             free(usedMask);
-
-            if (status == 0) {
-                break;
-            }
 
             databaseStart = databaseLen;
         }
@@ -359,12 +409,11 @@ int main(int argc, char* argv[]) {
     timerPrint("hdbPart", dbTotal);
     timerPrint("swPart", swTotal);
 
+    deleteFastaChains(queries, queriesLen);
+
     scorerDelete(scorer);
 
     threadPoolTerminate();
-
-    deleteFastaChains(queries, queriesLen);
-
     free(cards);
 
     return 0;

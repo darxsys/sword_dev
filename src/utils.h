@@ -9,12 +9,18 @@ extern "C" {
 #endif
 
 typedef std::vector<std::vector<int> > Data;
+typedef std::vector<std::vector<char*> > Seeds;
 
-extern void seedsCreate(Data** seeds, int seedLen, int permute, Scorer* scorer);
+extern void seedsCreate(Seeds** seeds, int seedLen, int permute, Scorer* scorer);
 
-extern void seedsCreateNew(Data** seeds, int seedLen, int permute, Scorer* scorer);
+extern void seedsCreateNew(Seeds** seeds, int seedLen, int permute, Scorer* scorer);
 
-extern void seedsDelete(Data* seeds);
+extern void seedsDelete(Seeds* seeds);
+
+extern void seedScoresCreate(int** seedScores, int* seedScoresLen, int seedLen,
+    Scorer* scorer);
+
+extern void seedScoresDelete(int* seedScores);
 
 extern void dataCreate(Data** data, int len);
 

@@ -8,7 +8,6 @@
 #include <utility>
 #include <algorithm>
 #include <functional>
-#include <map>
 
 using namespace std;
 
@@ -268,198 +267,193 @@ static void* findCandidates(void* params) {
 
     initTotal += timerStop(&initTimer);
 
-    // for (int queryIdx = taskStart; queryIdx < taskEnd;) {
+    for (int queryIdx = taskStart; queryIdx < taskEnd;) {
 
-    int queryIdx = taskStart;
-    // create automaton
-    timerStart(&automatonTimer);
+        // create automaton
+        timerStart(&automatonTimer);
 
-    // int scoresLen = 0;
-    int groupLen = taskEnd - taskStart;
+        int scoresLen = 0;
+        int groupLen = 0;
 
-    // for (int i = queryIdx; i < taskEnd; ++i) {
-    //     ++groupLen;
-    //     scoresLen += chainGetLength(queries[i]) + maxTargetLen -
-    //         2 * seedLen + 1;
+        for (int i = queryIdx; i < taskEnd; ++i) {
+            ++groupLen;
+            scoresLen += chainGetLength(queries[i]) + maxTargetLen -
+                2 * seedLen + 1;
 
-    //     if (scoresLen > 262144) { // 1 MB
-    //         break;
-    //     }
-    // }
-
-    automatonCreate(queries, queryIdx, groupLen, seeds, seedLen, &automaton);
-
-    automatonTotal += timerStop(&automatonTimer);
-    timerStart(&initTimer);
-
-    // dlen, dstart
-    vector<int> dlens(groupLen, 0);
-    vector<int> dstarts(groupLen + 1, 0);
-
-    // max, min
-    vector<int> max(groupLen, 0);
-    vector<int> min(groupLen, 0);
-
-    // vector<int> scores(scoresLen, 0);
-    vector<map<int, int> > scoresMaps(groupLen);
-
-    for (int i = 0; i < groupLen; ++i) {
-        min[i] = (*candidates)[queryIdx + i].size() == maxCandidates ?
-            (*candidates)[queryIdx + i][maxCandidates - 1].score : 100000000;
-
-        (*candidates)[queryIdx + i].reserve(maxCandidates);
-    }
-
-    initTotal += timerStop(&initTimer);
-
-    for (int targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
-
-        if (chainSkip[targetIdx] == 1) {
-            int score = chainGetLength(database[targetIdx]);
-
-            for (int i = 0; i < groupLen; ++i) {
-                (*candidates)[queryIdx + i].emplace_back(score, targetIdx);
+            if (scoresLen > 262144) { // 1 MB
+                break;
             }
-
-            continue;
         }
 
+        automatonCreate(queries, queryIdx, groupLen, seeds, seedLen, &automaton);
+
+        automatonTotal += timerStop(&automatonTimer);
         timerStart(&initTimer);
 
-        ACNode* state = automaton;
+        // dlen, dstart
+        vector<int> dlens(groupLen, 0);
+        vector<int> dstarts(groupLen + 1, 0);
 
-        Chain* target = database[targetIdx];
-        int targetLen = chainGetLength(target);
-        const char* tcodes = chainGetCodes(target);
+        // max, min
+        vector<int> max(groupLen, 0);
+        vector<int> min(groupLen, 0);
+
+        vector<int> scores(scoresLen, 0);
 
         for (int i = 0; i < groupLen; ++i) {
-            dlens[i] = chainGetLength(queries[queryIdx + i]) +
-                targetLen - 2 * seedLen + 1;
+            min[i] = (*candidates)[queryIdx + i].size() == maxCandidates ?
+                (*candidates)[queryIdx + i][maxCandidates - 1].score : 100000000;
 
-            dstarts[i + 1] = dstarts[i] + dlens[i];
+            (*candidates)[queryIdx + i].reserve(maxCandidates);
         }
 
         initTotal += timerStop(&initTimer);
-        timerStart(&automatonTimer);
 
-        // find hits
-        for (int k = 0; k < targetLen; ++k) {
-            int c = tcodes[k];
+        for (int targetIdx = 0; targetIdx < databaseLen; ++targetIdx) {
 
-            while (!state->edge[c]) {
-                state = state->fail;
+            if (chainSkip[targetIdx] == 1) {
+                int score = chainGetLength(database[targetIdx]);
+
+                for (int i = 0; i < groupLen; ++i) {
+                    (*candidates)[queryIdx + i].emplace_back(score, targetIdx);
+                }
+
+                continue;
             }
-            if (state->edge[c] == state) continue;
 
-            state = state->edge[c];
+            timerStart(&initTimer);
 
-            if (state->final) {
-                // hits.emplace_back(k - seedLen + 1, state->positions);
+            ACNode* state = automaton;
 
-                int tstart = k - seedLen + 1;
-                // int code = state->positions[0];
+            Chain* target = database[targetIdx];
+            int targetLen = chainGetLength(target);
+            const char* tcodes = chainGetCodes(target);
 
-                for (int i = 1; i < (int) state->positions.size(); i += 2) {
-                    int idx = state->positions[i];
-                    // int d = (tstart - state->positions[i + 1] + dlens[idx]) %
-                    //     dlens[idx] + dstarts[idx];
+            for (int i = 0; i < groupLen; ++i) {
+                dlens[i] = chainGetLength(queries[queryIdx + i]) +
+                    targetLen - 2 * seedLen + 1;
 
-                    int d = tstart - state->positions[i+1];
-                    ++scoresMaps[idx][d];
-                    // ++scores[d];
+                dstarts[i + 1] = dstarts[i] + dlens[i];
+            }
 
-                    if (max[idx] < scoresMaps[idx][d]) {
-                        max[idx] = scoresMaps[idx][d];
+            initTotal += timerStop(&initTimer);
+            timerStart(&automatonTimer);
+
+            // find hits
+            for (int k = 0; k < targetLen; ++k) {
+                int c = tcodes[k];
+
+                while (!state->edge[c]) {
+                    state = state->fail;
+                }
+                if (state->edge[c] == state) continue;
+
+                state = state->edge[c];
+
+                if (state->final) {
+                    // hits.emplace_back(k - seedLen + 1, state->positions);
+
+                    int tstart = k - seedLen + 1;
+                    // int code = state->positions[0];
+
+                    for (int i = 1; i < (int) state->positions.size(); i += 2) {
+                        int idx = state->positions[i];
+                        int d = (tstart - state->positions[i + 1] + dlens[idx]) %
+                            dlens[idx] + dstarts[idx];
+
+                        ++scores[d];
+
+                        if (max[idx] < scores[d]) {
+                            max[idx] = scores[d];
+                        }
                     }
                 }
             }
+
+            automatonTotal += timerStop(&automatonTimer);
+
+            // create canidates
+            for (int i = 0; i < (int) groupLen; ++i) {
+                if (max[i] == 0) {
+                    continue;
+                }
+
+                if ((*candidates)[queryIdx + i].size() < maxCandidates || max[i] > min[i]) {
+                    (*candidates)[queryIdx + i].emplace_back(max[i], targetIdx);
+
+                    if (min[i] > max[i]) {
+                        min[i] = max[i];
+                    }
+                }
+            }
+
+            // clear hits, reset max and scores
+            timerStart(&deleteTimer);
+
+            for (int i = 0; i < (int) groupLen; ++i) {
+                if (max[i] == 0) {
+                    continue;
+                }
+
+                fill_n(scores.begin() + dstarts[i], dlens[i], 0);
+            }
+
+            fill(max.begin(), max.end(), 0);
+
+            deleteTotal += timerStop(&deleteTimer);
         }
+
+        // sort and pick top candidates
+        timerStart(&candidatesTimer);
+
+        for (int i = 0; i < (int) groupLen; ++i) {
+            if ((*candidates)[queryIdx + i].size() > maxCandidates) {
+                stable_sort(
+                    (*candidates)[queryIdx + i].begin(),
+                    (*candidates)[queryIdx + i].end(),
+                    sort_by_score());
+
+                vector<Candidate> temp(
+                    (*candidates)[queryIdx + i].begin(),
+                    (*candidates)[queryIdx + i].begin() + maxCandidates);
+
+                (*candidates)[queryIdx + i].swap(temp);
+            }
+        }
+
+        candidatesTotal += timerStop(&candidatesTimer);
+
+        // extract indices if last database segment
+        timerStart(&indicesTimer);
+
+        for (int i = 0; i < (int) groupLen; ++i) {
+
+            (*indices)[queryIdx + i].reserve((*candidates)[queryIdx + i].size());
+
+            // int size = (*candidates)[queryIdx].size();
+            for (int j = 0; j < (*candidates)[queryIdx + i].size(); ++j) {
+                (*indices)[queryIdx + i].push_back((*candidates)[queryIdx + i][j].idx);
+            }   
+
+            vector<Candidate>().swap((*candidates)[queryIdx + i]);
+
+            // if (size == maxCandidates) {
+            if ((*indices)[queryIdx + i].size() == maxCandidates) {
+                sort((*indices)[queryIdx + i].begin(), (*indices)[queryIdx + i].end());
+            }
+        }
+
+        indicesTotal += timerStop(&indicesTimer);
+
+        // delete automaton
+        timerStart(&automatonTimer);
+
+        automatonDelete(automaton);
 
         automatonTotal += timerStop(&automatonTimer);
 
-        // create candidates
-        for (int i = 0; i < (int) groupLen; ++i) {
-            if (max[i] == 0) {
-                continue;
-            }
-
-            if ((*candidates)[queryIdx + i].size() < maxCandidates || max[i] > min[i]) {
-                (*candidates)[queryIdx + i].emplace_back(max[i], targetIdx);
-
-                if (min[i] > max[i]) {
-                    min[i] = max[i];
-                }
-            }
-        }
-
-        // clear hits, reset max and scores
-        timerStart(&deleteTimer);
-
-        for (int i = 0; i < (int) groupLen; ++i) {
-            if (max[i] == 0) {
-                continue;
-            }
-
-            scoresMaps[i].clear();
-            // fill_n(scores.begin() + dstarts[i], dlens[i], 0);
-        }
-
-        fill(max.begin(), max.end(), 0);
-
-        deleteTotal += timerStop(&deleteTimer);
+        queryIdx += groupLen;
     }
-
-    // sort and pick top candidates
-    timerStart(&candidatesTimer);
-
-    for (int i = 0; i < (int) groupLen; ++i) {
-        if ((*candidates)[queryIdx + i].size() > maxCandidates) {
-            stable_sort(
-                (*candidates)[queryIdx + i].begin(),
-                (*candidates)[queryIdx + i].end(),
-                sort_by_score());
-
-            vector<Candidate> temp(
-                (*candidates)[queryIdx + i].begin(),
-                (*candidates)[queryIdx + i].begin() + maxCandidates);
-
-            (*candidates)[queryIdx + i].swap(temp);
-        }
-    }
-
-    candidatesTotal += timerStop(&candidatesTimer);
-
-    // extract indices if last database segment
-    timerStart(&indicesTimer);
-
-    for (int i = 0; i < (int) groupLen; ++i) {
-
-        (*indices)[queryIdx + i].reserve((*candidates)[queryIdx + i].size());
-
-        // int size = (*candidates)[queryIdx].size();
-        for (int j = 0; j < (*candidates)[queryIdx + i].size(); ++j) {
-            (*indices)[queryIdx + i].push_back((*candidates)[queryIdx + i][j].idx);
-        }   
-
-        vector<Candidate>().swap((*candidates)[queryIdx + i]);
-
-        // if (size == maxCandidates) {
-        if ((*indices)[queryIdx + i].size() == maxCandidates) {
-            sort((*indices)[queryIdx + i].begin(), (*indices)[queryIdx + i].end());
-        }
-    }
-
-    indicesTotal += timerStop(&indicesTimer);
-
-    // delete automaton
-    timerStart(&automatonTimer);
-
-    automatonDelete(automaton);
-
-    automatonTotal += timerStop(&automatonTimer);
-
-    queryIdx += groupLen;
-    // }
 
     delete threadData;
 

@@ -220,24 +220,18 @@ int main(int argc, char* argv[]) {
     Scorer* scorer = NULL;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
 
-    Chain** queries = NULL;
-    int queriesLen = 0;
-    readFastaChains(&queries, &queriesLen, queryPath);
-
-    Chain** database = NULL;
-    int databaseLen = 0;
-    readFastaChains(&database, &databaseLen, databasePath);
-
-    void* indices = databaseIndicesCreate(database, databaseLen, queries, queriesLen,
-        seedLen, maxCandidates, permute, scorer, threads);
-
-    deleteFastaChains(database, databaseLen);
+    void* indices = databaseIndicesCreate(databasePath, queryPath, seedLen, maxCandidates,
+        permute, scorer, threads);
 
     Timeval swTimer, dbTimer;
     long long dbTotal = 0, swTotal = 0;
     timerStart(&swTimer);
 
     if (indices != NULL) {
+
+        Chain** queries = NULL;
+        int queriesLen = 0;
+        readFastaChains(&queries, &queriesLen, queryPath);
 
         if (cache) {
             dumpFastaChains(databasePath);
@@ -252,10 +246,8 @@ int main(int argc, char* argv[]) {
         DbAlignment*** dbAlignments = NULL;
         int* dbAlignmentsLens = NULL;
 
-        // Chain** database = NULL;
-        // int databaseLen = 0;
-        database = NULL;
-        databaseLen = 0;
+        Chain** database = NULL;
+        int databaseLen = 0;
         int databaseStart = 0;
         int databaseEnd = 0;
 
@@ -402,14 +394,14 @@ int main(int argc, char* argv[]) {
 
         deleteFastaChains(database, databaseLen);
 
+        deleteFastaChains(queries, queriesLen);
+
         databaseIndicesDelete(indices);
     }
 
     swTotal = timerStop(&swTimer);
     timerPrint("hdbPart", dbTotal);
     timerPrint("swPart", swTotal);
-
-    deleteFastaChains(queries, queriesLen);
 
     scorerDelete(scorer);
 

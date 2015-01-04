@@ -78,9 +78,8 @@ static bool candidateByScore(const Candidate& left, const Candidate& right) {
 // ***************************************************************************
 // PUBLIC
 
-extern void* databaseIndicesCreate(Chain** database, int databaseLen,
-    Chain** queries, int queriesLen, int seedLen, int maxCandidates,
-    int permute, Scorer* scorer, int threadLen);
+extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seedLen,
+    int maxCandidates, int permute, Scorer* scorer, int threadLen);
 
 extern void databaseIndicesDelete(void* indices_);
 
@@ -96,7 +95,7 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
     Chain** queries, int queriesLen, int threadLen);
 
 static void sortDatabase(vector<Sequence>& tsequences, vector<int>& tsegments,
-    Chain** database, int databaseLen);
+    Chain** database, int databaseLen, int databaseStart);
 
 static void* findCandidates(void* params);
 
@@ -107,26 +106,23 @@ static void* findCandidates(void* params);
 // ***************************************************************************
 // PUBLIC
 
-extern void* databaseIndicesCreate(Chain** database, int databaseLen,
-    Chain** queries, int queriesLen, int seedLen, int maxCandidates,
-    int permute, Scorer* scorer, int threadLen) {
+extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seedLen,
+    int maxCandidates, int permute, Scorer* scorer, int threadLen) {
 
     Timeval timer;
 
     timerStart(&timer);
 
-    vector<Sequence> tsequences;
-    vector<int> tsegments;
-    sortDatabase(tsequences, tsegments, database, databaseLen);
+    Chain** queries = NULL;
+    int queriesLen = 0;
+    readFastaChains(&queries, &queriesLen, queryPath);
 
     vector<Sequence> qsequences;
     vector<int> qsegments;
     sortQueries(qsequences, qsegments, queries, queriesLen, threadLen);
 
-    timerPrint("sorting sequences", timerStop(&timer));
-
     Seeds* seeds = NULL;
-    seedsCreateNew(&seeds, seedLen, permute, scorer);
+    seedsCreate(&seeds, seedLen, permute, scorer);
 
     Candidates* candidates = NULL;
     candidatesCreate(&candidates, queriesLen);
@@ -134,21 +130,58 @@ extern void* databaseIndicesCreate(Chain** database, int databaseLen,
     Data* indices = NULL;
     dataCreate(&indices, queriesLen);
 
-    ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
+    Chain** database = NULL;
+    int databaseLen = 0;
+    int databaseStart = 0;
 
-    for (int i = 0; i < threadLen; ++i) {
-        ThreadData* threadData = new ThreadData(i, queries, &qsequences, &qsegments, database,
-            &tsequences, &tsegments, seeds, seedLen, candidates, maxCandidates, indices, 1);
+    FILE* handle;
+    int serialized;
 
-        threadTasks[i] = threadPoolSubmit(findCandidates, static_cast<void*>(threadData));
+    readFastaChainsPartInit(&database, &databaseLen, &handle, &serialized, databasePath);
+
+    while (1) {
+
+        int status = 1;
+
+        status &= readFastaChainsPart(&database, &databaseLen, handle,
+            serialized, 1000000000); // ~1GB
+
+        vector<Sequence> tsequences;
+        vector<int> tsegments;
+        sortDatabase(tsequences, tsegments, database, databaseLen, databaseStart);
+
+        ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
+
+        for (int i = 0; i < threadLen; ++i) {
+            ThreadData* threadData = new ThreadData(i, queries, &qsequences, &qsegments, database,
+                &tsequences, &tsegments, seeds, seedLen, candidates, maxCandidates, indices, !status);
+
+            threadTasks[i] = threadPoolSubmit(findCandidates, static_cast<void*>(threadData));
+        }
+
+        for (int i = 0; i < threadLen; ++i) {
+            threadPoolTaskWait(threadTasks[i]);
+            threadPoolTaskDelete(threadTasks[i]);
+        }
+
+        delete[] threadTasks;
+
+        if (status == 0) {
+            break;
+        }
+
+        for (int i = databaseStart; i < databaseLen; ++i) {
+            chainDelete(database[i]);
+            database[i] = NULL;
+        }
+
+        databaseStart = databaseLen;
     }
 
-    for (int i = 0; i < threadLen; ++i) {
-        threadPoolTaskWait(threadTasks[i]);
-        threadPoolTaskDelete(threadTasks[i]);
-    }
+    fclose(handle);
 
-    delete[] threadTasks; 
+    deleteFastaChains(database, databaseLen);
+    deleteFastaChains(queries, queriesLen);
 
     candidatesDelete(candidates);
 
@@ -221,8 +254,6 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
     int segmentMaxLen = totalLen / threadLen;
     int segmentLen = 0;
 
-    fprintf(stderr, "%d %d\n", totalLen, segmentMaxLen);
-
     for (int i = 0; i < queriesLen; ++i) {
 
         if (qsequences[i].len + segmentLen > segmentMaxLen) {
@@ -249,14 +280,14 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
 }
 
 static void sortDatabase(vector<Sequence>& tsequences, vector<int>& tsegments,
-    Chain** database, int databaseLen) {
+    Chain** database, int databaseLen, int databaseStart) {
 
     int segments[] = { 0, 2048, 8192, -1 };
     int segmentsLen = 3;
 
-    tsequences.reserve(databaseLen);
+    tsequences.reserve(databaseLen - databaseStart);
 
-    for (int i = 0; i < databaseLen; ++i) {
+    for (int i = databaseStart; i < databaseLen; ++i) {
         tsequences.emplace_back(i, chainGetLength(database[i]));
     }
 
@@ -266,7 +297,7 @@ static void sortDatabase(vector<Sequence>& tsequences, vector<int>& tsegments,
     tsegments.push_back(0);
 
     int j = 1;
-    for (int i = 0; i < databaseLen; ++i) {
+    for (int i = 0; i < (int) tsequences.size(); ++i) {
         if (tsequences[i].len > segments[j]) {
             tsegments.push_back(i);
             ++j;
@@ -280,7 +311,7 @@ static void sortDatabase(vector<Sequence>& tsequences, vector<int>& tsegments,
         ++j;
     }
 
-    tsegments.push_back(databaseLen);
+    tsegments.push_back(databaseLen - databaseStart);
 
     for (int i = 0; i < (int) tsegments.size(); ++i) {
         fprintf(stderr, "[%d] %d\n", segments[i], tsegments[i]);
@@ -307,7 +338,10 @@ static void* findCandidates(void* params) {
     int queryStart = threadData->qsegments->at(threadData->threadIdx);
     int queryEnd = threadData->qsegments->at(threadData->threadIdx + 1);
 
-    if (queryEnd - queryStart == 0) return NULL;
+    if (queryEnd - queryStart == 0) {
+        delete threadData;
+        return NULL;
+    }
 
     Chain** queries = threadData->queries;
     vector<Sequence>* qsequences = threadData->qsequences;
@@ -514,20 +548,22 @@ static void* findCandidates(void* params) {
     // extract indices if last database segment
     timerStart(&indicesTimer);
 
-    for (int queryIdx = queryStart; queryIdx < queryEnd; ++queryIdx) {
+    if (threadData->extractIndices) {
+        for (int queryIdx = queryStart; queryIdx < queryEnd; ++queryIdx) {
 
-        int qidx = (*qsequences)[queryIdx].idx;
+            int qidx = (*qsequences)[queryIdx].idx;
 
-        (*indices)[qidx].reserve((*candidates)[qidx].size());
+            (*indices)[qidx].reserve((*candidates)[qidx].size());
 
-        for (int j = 0; j < (*candidates)[qidx].size(); ++j) {
-            (*indices)[qidx].push_back((*candidates)[qidx][j].idx);
-        }   
+            for (int j = 0; j < (*candidates)[qidx].size(); ++j) {
+                (*indices)[qidx].push_back((*candidates)[qidx][j].idx);
+            }   
 
-        vector<Candidate>().swap((*candidates)[qidx]);
+            vector<Candidate>().swap((*candidates)[qidx]);
 
-        if ((*indices)[qidx].size() == maxCandidates) {
-            sort((*indices)[qidx].begin(), (*indices)[qidx].end());
+            if ((*indices)[qidx].size() == maxCandidates) {
+                sort((*indices)[qidx].begin(), (*indices)[qidx].end());
+            }
         }
     }
 

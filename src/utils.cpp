@@ -12,7 +12,7 @@
 using namespace std;
 
 #define SEED_IDX_LEN(n) ((n) == 3 ? 26426 : ((n) == 4 ? 845626 : 27060026))
-#define SEED_THRESHOLD(n) ((n) == 3 ? 11 : ((n) == 4 ? 13 : 15))
+#define SEED_THRESHOLD(n) ((n) == 3 ? 13 : ((n) == 4 ? 13 : 15))
 
 #define AA 20
 

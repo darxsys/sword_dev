@@ -83,8 +83,11 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
 extern void databaseIndicesDelete(void* indices_);
 
-extern void partialIndicesCreate(int** partialIndices, int* partialIndicesLen,
-    void* indices_, int queryIdx, int databaseLen);
+extern int* filteredDatabaseCreate(void* indices_, int queryIdx,
+    Chain** database, int databaseLen, Chain*** filteredDatabase,
+    int* filteredDatabaseLen, int returnUsed);
+
+extern void filteredDatabaseDelete(Chain** filteredDatabase);
 
 // ***************************************************************************
 
@@ -197,35 +200,55 @@ extern void databaseIndicesDelete(void* indices_) {
     dataDelete(indices);
 }
 
-extern void partialIndicesCreate(int** partialIndices, int* partialIndicesLen,
-    void* indices_, int queryIdx, int databaseLen) {
+extern int* filteredDatabaseCreate(Chain*** filteredDatabase,
+    int* filteredDatabaseLen, void* indices_, int queryIdx,
+    Chain** database, int databaseLen, int returnUsed) {
 
     Data* indices = static_cast<Data*>(indices_);
 
+    int* usedIndices = NULL;
+    int usedIndicesLen = 0;
+
     int databaseEnd = databaseLen - 1;
-    int i;
+    unsigned int j;
 
-    for (i = 0; i < (int) (*indices)[queryIdx].size(); ++i) {
-        if ((*indices)[queryIdx][i] > databaseEnd) break;
+    for (j = 0; j < (*indices)[queryIdx].size(); ++j) {
+        if ((*indices)[queryIdx][j] > databaseEnd) break;
     }
 
-    *partialIndicesLen = i;
+    usedIndicesLen = j;
 
-    if (i == 0) {
-        *partialIndices = NULL;
+    if (usedIndicesLen == 0) {
+        *filteredDatabase = NULL;
+        *filteredDatabaseLen = 0;
     } else {
-        *partialIndices = (int*) malloc(i * sizeof(int));
+        *filteredDatabase = new Chain*[usedIndicesLen];
+        *filteredDatabaseLen = usedIndicesLen;
 
-        for (int j = 0; j < i; ++j) {
-            (*partialIndices)[j] = (*indices)[queryIdx][j];
+        for (int i = 0; i < usedIndicesLen; ++i) {
+            (*filteredDatabase)[i] = database[(*indices)[queryIdx][i]];
         }
+
+        if (returnUsed) {
+            usedIndices = static_cast<int*>(malloc(usedIndicesLen * sizeof(*usedIndices)));
+
+            for (int i = 0; i < usedIndicesLen; ++i) {
+                usedIndices[i] = (*indices)[queryIdx][i];
+            }
+        }
+
+        vector<int> temp(
+            (*indices)[queryIdx].begin() + usedIndicesLen,
+            (*indices)[queryIdx].end());
+
+        (*indices)[queryIdx].swap(temp);
     }
 
-    vector<int> temp(
-        (*indices)[queryIdx].begin() + i,
-        (*indices)[queryIdx].end());
+    return usedIndices;
+}
 
-    (*indices)[queryIdx].swap(temp);
+extern void filteredDatabaseDelete(Chain** filteredDatabase) {
+    delete[] filteredDatabase;
 }
 
 // ***************************************************************************
@@ -561,9 +584,7 @@ static void* findCandidates(void* params) {
 
             vector<Candidate>().swap((*candidates)[qidx]);
 
-            if ((*indices)[qidx].size() == maxCandidates) {
-                sort((*indices)[qidx].begin(), (*indices)[qidx].end());
-            }
+            sort((*indices)[qidx].begin(), (*indices)[qidx].end());
         }
     }
 

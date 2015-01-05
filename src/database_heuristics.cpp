@@ -47,7 +47,6 @@ struct ThreadData{
     int threadIdx;
     Chain** queries;
     vector<Sequence>* qsequences;
-    vector<int>* qsegments;
     Chain** database;
     vector<Sequence>* tsequences;
     vector<int>* tsegments;
@@ -55,17 +54,14 @@ struct ThreadData{
     int seedLen;
     Candidates* candidates;
     int maxCandidates;
-    Data* indices;
-    int extractIndices;
+    int* min;
 
-    ThreadData(int threadIdx_, Chain** queries_, vector<Sequence>* qsequences_,
-            vector<int>* qsegments_, Chain** database_, vector<Sequence>* tsequences_,
-            vector<int>* tsegments_, Seeds* seeds_, int seedLen_, Candidates* candidates_,
-            int maxCandidates_, Data* indices_, int extractIndices_) :
-        threadIdx(threadIdx_), queries(queries_), qsequences(qsequences_), qsegments(qsegments_),
-        database(database_), tsequences(tsequences_), tsegments(tsegments_), seeds(seeds_),
-        seedLen(seedLen_), candidates(candidates_), maxCandidates(maxCandidates_),
-        indices(indices_), extractIndices(extractIndices_) {
+    ThreadData(int threadIdx_, Chain** queries_, vector<Sequence>* qsequences_, Chain** database_,
+            vector<Sequence>* tsequences_, vector<int>* tsegments_, Seeds* seeds_, int seedLen_,
+            Candidates* candidates_, int maxCandidates_, int* min_) :
+        threadIdx(threadIdx_), queries(queries_), qsequences(qsequences_), database(database_),
+        tsequences(tsequences_), tsegments(tsegments_), seeds(seeds_), seedLen(seedLen_),
+        candidates(candidates_), maxCandidates(maxCandidates_), min(min_) {
     }
 };
 
@@ -98,7 +94,7 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
     Chain** queries, int queriesLen, int threadLen);
 
 static void sortDatabase(vector<Sequence>& tsequences, vector<int>& tsegments,
-    Chain** database, int databaseLen, int databaseStart);
+    Chain** database, int databaseLen, int databaseStart, int threadLen);
 
 static void* findCandidates(void* params);
 
@@ -142,6 +138,9 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
     readFastaChainsPartInit(&database, &databaseLen, &handle, &serialized, databasePath);
 
+    Timeval candidatesTimer;
+    long long candidatesTotal = 0;
+
     while (1) {
 
         int status = 1;
@@ -151,13 +150,25 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
         vector<Sequence> tsequences;
         vector<int> tsegments;
-        sortDatabase(tsequences, tsegments, database, databaseLen, databaseStart);
+        sortDatabase(tsequences, tsegments, database, databaseLen, databaseStart, threadLen);
+
+        int maxTargetLen = tsequences.back().len;
+        int* min = new int[queriesLen];
+
+        for (int i = 0; i < queriesLen; ++i) {
+            min[i] = (*candidates)[i].size() == maxCandidates ?
+                (*candidates)[i].back().score : 100000000;
+        }
 
         ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
+        Candidates** candidatesParts = new Candidates*[threadLen];
 
         for (int i = 0; i < threadLen; ++i) {
-            ThreadData* threadData = new ThreadData(i, queries, &qsequences, &qsegments, database,
-                &tsequences, &tsegments, seeds, seedLen, candidates, maxCandidates, indices, !status);
+            candidatesCreate(&candidatesParts[i], queriesLen);
+
+            ThreadData* threadData = new ThreadData(i, queries, &qsequences, database,
+                &tsequences, &tsegments, seeds, seedLen, candidatesParts[i],
+                maxCandidates, min);
 
             threadTasks[i] = threadPoolSubmit(findCandidates, static_cast<void*>(threadData));
         }
@@ -167,6 +178,39 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
             threadPoolTaskDelete(threadTasks[i]);
         }
 
+        // merge candidates
+        timerStart(&candidatesTimer);
+
+        for (int i = 0; i < queriesLen; ++i) {
+            for (int j = 0; j < threadLen; ++j) {
+                (*candidates)[i].insert((*candidates)[i].end(),
+                    (*candidatesParts[j])[i].begin(),
+                    (*candidatesParts[j])[i].end());
+
+                vector<Candidate>().swap((*candidatesParts[j])[i]);
+            }
+
+            stable_sort(
+                (*candidates)[i].begin(),
+                (*candidates)[i].end(),
+                candidateByScore);
+
+            vector<Candidate> temp(
+                (*candidates)[i].begin(),
+                (*candidates)[i].begin() + maxCandidates);
+
+            (*candidates)[i].swap(temp);
+        }
+
+        for (int i = 0; i < threadLen; ++i) {
+            candidatesDelete(candidatesParts[i]);           
+        }
+
+        delete[] candidatesParts;
+
+        candidatesTotal += timerStop(&candidatesTimer);
+
+        delete[] min;
         delete[] threadTasks;
 
         if (status == 0) {
@@ -181,6 +225,16 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
         databaseStart = databaseLen;
     }
 
+    for (int i = 0; i < queriesLen; ++i) {
+        (*indices)[i].reserve((*candidates)[i].size());
+
+        for (int j = 0; j < (*candidates)[i].size(); ++j) {
+            (*indices)[i].push_back((*candidates)[i][j].idx);
+        }
+
+        sort((*indices)[i].begin(), (*indices)[i].end());
+    }
+
     fclose(handle);
 
     deleteFastaChains(database, databaseLen);
@@ -190,6 +244,7 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
     seedsDelete(seeds);
 
+    timerPrint("CandidatesTotal", candidatesTotal);
     timerPrint("HeuristicsTotal", timerStop(&timer));
 
     return static_cast<void*>(indices);
@@ -279,9 +334,7 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
 
     for (int i = 0; i < queriesLen; ++i) {
 
-        segmentLen += qsequences[i].len;
-
-        if (segmentLen > segmentMaxLen) {
+        if (qsequences[i].len + segmentLen > segmentMaxLen) {
             qsegments.push_back(i);
             segmentLen = 0;
 
@@ -289,6 +342,8 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
                 break;
             }
         }
+
+        segmentLen += qsequences[i].len;
     }
 
     while ((int) qsegments.size() != threadLen) {
@@ -297,47 +352,55 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
 
     qsegments.push_back(queriesLen);
 
-    for (int i = 0; i < (int) qsegments.size(); ++i) {
-        fprintf(stderr, "[%d] %d\n", i, qsegments[i]);
-    }
+    //for (int i = 0; i < (int) qsegments.size(); ++i) {
+    //    fprintf(stderr, "[%d] %d\n", i, qsegments[i]);
+    //}
 }
 
 static void sortDatabase(vector<Sequence>& tsequences, vector<int>& tsegments,
-    Chain** database, int databaseLen, int databaseStart) {
+    Chain** database, int databaseLen, int databaseStart, int threadLen) {
 
-    int segments[] = { 0, 2048, 8192, -1 };
-    int segmentsLen = 3;
+    int totalLen = 0;
+    int databasePartLen = databaseLen - databaseStart;
 
-    tsequences.reserve(databaseLen - databaseStart);
+    tsequences.reserve(databasePartLen);
 
     for (int i = databaseStart; i < databaseLen; ++i) {
-        tsequences.emplace_back(i, chainGetLength(database[i]));
+        int len = chainGetLength(database[i]);
+
+        tsequences.emplace_back(i, len);
+        totalLen += len;
     }
 
     sort(tsequences.begin(), tsequences.end(), sequenceByLen);
-    segments[3] = tsequences.back().len;
 
     tsegments.push_back(0);
+    
+    int segmentMaxLen = totalLen / threadLen;
+    int segmentLen = 0;
 
-    int j = 1;
-    for (int i = 0; i < (int) tsequences.size(); ++i) {
-        if (tsequences[i].len > segments[j]) {
+    for (int i = 0; i < databasePartLen; ++i) {
+
+        segmentLen += tsequences[i].len;
+
+        if (segmentLen > segmentMaxLen) {
             tsegments.push_back(i);
-            ++j;
+            segmentLen = 0;
+
+            if ((int) tsegments.size() == threadLen) {
+                break;
+            }
         }
-
-        if (j == segmentsLen) break;
     }
 
-    while (j != segmentsLen) {
+    while ((int) tsegments.size() != threadLen) {
         tsegments.push_back(tsegments.back());
-        ++j;
     }
 
-    tsegments.push_back(databaseLen - databaseStart);
+    tsegments.push_back(databasePartLen);
 
     for (int i = 0; i < (int) tsegments.size(); ++i) {
-        fprintf(stderr, "[%d] %d\n", segments[i], tsegments[i]);
+        fprintf(stderr, "[%d] %d\n", i, tsegments[i]);
     }
 }
 
@@ -346,10 +409,9 @@ static void* findCandidates(void* params) {
     // **********
 
     Timeval threadTimer, initTimer, automatonTimer, automatonCreateTimer,
-        deleteTimer, candidatesTimer, indicesTimer;
+        deleteTimer, candidatesTimer;
     long long threadTotal = 0, initTotal = 0, automatonTotal = 0,
-        automatonCreateTotal = 0, deleteTotal = 0, candidatesTotal = 0,
-        indicesTotal = 0;
+        automatonCreateTotal = 0, deleteTotal = 0, candidatesTotal = 0;
 
     // **********
 
@@ -358,20 +420,20 @@ static void* findCandidates(void* params) {
 
     ThreadData* threadData = static_cast<ThreadData*>(params);
 
-    int queryStart = threadData->qsegments->at(threadData->threadIdx);
-    int queryEnd = threadData->qsegments->at(threadData->threadIdx + 1);
+    int targetStart = threadData->tsegments->at(threadData->threadIdx);
+    int targetEnd = threadData->tsegments->at(threadData->threadIdx + 1);
 
-    if (queryEnd - queryStart == 0) {
+    if (targetEnd - targetStart == 0) {
         delete threadData;
         return NULL;
     }
 
     Chain** queries = threadData->queries;
     vector<Sequence>* qsequences = threadData->qsequences;
+    int queriesLen = (*qsequences).size();
 
     Chain** database = threadData->database;
     vector<Sequence>* tsequences = threadData->tsequences;
-    vector<int>* tsegments = threadData->tsegments;
 
     Seeds* seeds = threadData->seeds;
     int seedLen = threadData->seedLen;
@@ -379,229 +441,196 @@ static void* findCandidates(void* params) {
     Candidates* candidates = threadData->candidates;
     int maxCandidates = threadData->maxCandidates;
 
-    Data* indices = threadData->indices;
-
     ACNode* automaton = NULL;
+
+    int maxTargetLen = (*tsequences)[targetEnd - 1].len;
 
     initTotal += timerStop(&initTimer);
 
-    for (int segmentIdx = 0; segmentIdx < (int) tsegments->size() - 1; ++segmentIdx) {
+    for (int queryIdx = 0; queryIdx < queriesLen;) {
 
-        int targetStart = tsegments->at(segmentIdx);
-        int targetEnd = tsegments->at(segmentIdx + 1);
+        // create automaton
+        timerStart(&automatonCreateTimer);
 
-        if (targetEnd - targetStart == 0) continue;
+        int scoresLen = 0;
+        int groupLen = 0;
 
-        int maxTargetLen = (*tsequences)[targetEnd - 1].len;
+        for (int i = queryIdx; i < queriesLen; ++i) {
 
-        for (int queryIdx = queryStart; queryIdx < queryEnd;) {
+            int len = (*qsequences)[i].len + maxTargetLen -
+                2 * seedLen + 1;
 
-            // create automaton
-            timerStart(&automatonCreateTimer);
-
-            int scoresLen = 0;
-            int groupLen = 0;
-
-            for (int i = queryIdx; i < queryEnd; ++i) {
-
-                int len = (*qsequences)[i].len + maxTargetLen -
-                    2 * seedLen + 1;
-
-                if (scoresLen + len > 125000) { // ~0.5MB
-                    break;
-                }
-
-                scoresLen += len;
-                ++groupLen;
+            if (scoresLen + len > 125000) { // ~0.5MB
+                break;
             }
 
-            Chain** queriesPart = new Chain*[groupLen];
+            scoresLen += len;
+            ++groupLen;
+        }
 
-            for (int i = 0; i < groupLen; ++i) {
-                queriesPart[i] = queries[(*qsequences)[queryIdx + i].idx];
-            }
+        Chain** queriesPart = new Chain*[groupLen];
 
-            automatonCreate(queriesPart, groupLen, seeds, seedLen, &automaton);
+        for (int i = 0; i < groupLen; ++i) {
+            queriesPart[i] = queries[(*qsequences)[queryIdx + i].idx];
+        }
 
-            automatonCreateTotal += timerStop(&automatonCreateTimer);
+        automatonCreate(queriesPart, groupLen, seeds, seedLen, &automaton);
+
+        automatonCreateTotal += timerStop(&automatonCreateTimer);
+        timerStart(&initTimer);
+
+        // dlen, dstart
+        vector<int> dlens(groupLen, 0);
+        vector<int> dstarts(groupLen + 1, 0);
+
+        // max, min
+        vector<int> max(groupLen, 0);
+        vector<int> min(groupLen, 0);
+
+        vector<unsigned short> scores(scoresLen, 0);
+
+        for (int i = 0; i < groupLen; ++i) {
+            int qidx = (*qsequences)[queryIdx + i].idx;
+
+            min[i] = (*candidates)[qidx].size() == maxCandidates ?
+                (*candidates)[qidx][maxCandidates - 1].score : 100000000;
+
+            (*candidates)[qidx].reserve(maxCandidates);
+        }
+
+        initTotal += timerStop(&initTimer);
+
+        for (int targetIdx = targetStart; targetIdx < targetEnd; ++targetIdx) {
+
             timerStart(&initTimer);
 
-            // dlen, dstart
-            vector<int> dlens(groupLen, 0);
-            vector<int> dstarts(groupLen + 1, 0);
+            ACNode* state = automaton;
 
-            // max, min
-            vector<int> max(groupLen, 0);
-            vector<int> min(groupLen, 0);
-
-            vector<unsigned short> scores(scoresLen, 0);
+            // Chain* target = database[targetIdx];
+            Chain* target = database[(*tsequences)[targetIdx].idx];
+            int targetLen = chainGetLength(target);
+            const char* tcodes = chainGetCodes(target);
 
             for (int i = 0; i < groupLen; ++i) {
-                int qidx = (*qsequences)[queryIdx + i].idx;
-
-                min[i] = (*candidates)[qidx].size() == maxCandidates ?
-                    (*candidates)[qidx][maxCandidates - 1].score : 100000000;
-
-                (*candidates)[qidx].reserve(maxCandidates);
+                dlens[i] = (*qsequences)[queryIdx + i].len + targetLen - 2 * seedLen + 1;
+                dstarts[i + 1] = dstarts[i] + dlens[i];
             }
 
             initTotal += timerStop(&initTimer);
+            timerStart(&automatonTimer);
 
-            for (int targetIdx = targetStart; targetIdx < targetEnd; ++targetIdx) {
+            // find hits
+             for (int k = 0; k < targetLen; ++k) {
+                int c = tcodes[k];
 
-                timerStart(&initTimer);
-
-                ACNode* state = automaton;
-
-                // Chain* target = database[targetIdx];
-                Chain* target = database[(*tsequences)[targetIdx].idx];
-                int targetLen = chainGetLength(target);
-                const char* tcodes = chainGetCodes(target);
-
-                for (int i = 0; i < groupLen; ++i) {
-                    dlens[i] = (*qsequences)[queryIdx + i].len + targetLen - 2 * seedLen + 1;
-                    dstarts[i + 1] = dstarts[i] + dlens[i];
+                while (!state->edge[c]) {
+                    state = state->fail;
                 }
+                if (state->edge[c] == state) continue;
 
-                initTotal += timerStop(&initTimer);
-                timerStart(&automatonTimer);
+                state = state->edge[c];
 
-                // find hits
-                for (int k = 0; k < targetLen; ++k) {
-                    int c = tcodes[k];
+                if (state->final) {
+                    // hits.emplace_back(k - seedLen + 1, state->positions);
 
-                    while (!state->edge[c]) {
-                        state = state->fail;
-                    }
-                    if (state->edge[c] == state) continue;
+                    int tstart = k - seedLen + 1;
+                    // int code = state->positions[0];
 
-                    state = state->edge[c];
+                    for (int i = 1; i < (int) state->positions.size(); i += 2) {
+                        int idx = state->positions[i];
+                        int d = (tstart - state->positions[i + 1] + dlens[idx]) %
+                            dlens[idx] + dstarts[idx];
 
-                    if (state->final) {
-                        // hits.emplace_back(k - seedLen + 1, state->positions);
+                        ++scores[d];
 
-                        int tstart = k - seedLen + 1;
-                        // int code = state->positions[0];
-
-                        for (int i = 1; i < (int) state->positions.size(); i += 2) {
-                            int idx = state->positions[i];
-                            int d = (tstart - state->positions[i + 1] + dlens[idx]) %
-                                dlens[idx] + dstarts[idx];
-
-                            ++scores[d];
-
-                            if (max[idx] < scores[d]) {
-                                max[idx] = scores[d];
-                            }
+                        if (max[idx] < scores[d]) {
+                            max[idx] = scores[d];
                         }
                     }
                 }
-
-                automatonTotal += timerStop(&automatonTimer);
-
-                // create canidates
-                for (int i = 0; i < (int) groupLen; ++i) {
-                    if (max[i] == 0) {
-                        continue;
-                    }
-
-                    int qidx = (*qsequences)[queryIdx + i].idx;
-
-                    if ((*candidates)[qidx].size() < maxCandidates || max[i] > min[i]) {
-                        // (*candidates)[queryIdx + i].emplace_back(max[i], targetIdx);
-                        (*candidates)[qidx].emplace_back(max[i], (*tsequences)[targetIdx].idx);
-
-                        if (min[i] > max[i]) {
-                            min[i] = max[i];
-                        }
-                    }
-                }
-
-                // clear hits, reset max and scores
-                timerStart(&deleteTimer);
-
-                for (int i = 0; i < (int) groupLen; ++i) {
-                    if (max[i] == 0) {
-                        continue;
-                    }
-
-                    fill_n(scores.begin() + dstarts[i], dlens[i], 0);
-                }
-
-                fill(max.begin(), max.end(), 0);
-
-                deleteTotal += timerStop(&deleteTimer);
             }
 
-            // sort and pick top candidates
-            timerStart(&candidatesTimer);
+            automatonTotal += timerStop(&automatonTimer);
 
+            // create canidates
             for (int i = 0; i < (int) groupLen; ++i) {
+                if (max[i] == 0) {
+                    continue;
+                }
+
                 int qidx = (*qsequences)[queryIdx + i].idx;
 
-                if ((*candidates)[qidx].size() > maxCandidates) {
-                    stable_sort(
-                        (*candidates)[qidx].begin(),
-                        (*candidates)[qidx].end(),
-                        candidateByScore);
+                if ((*candidates)[qidx].size() < maxCandidates || max[i] > min[i]) {
+                    // (*candidates)[queryIdx + i].emplace_back(max[i], targetIdx);
+                    (*candidates)[qidx].emplace_back(max[i], (*tsequences)[targetIdx].idx);
 
-                    vector<Candidate> temp(
-                        (*candidates)[qidx].begin(),
-                        (*candidates)[qidx].begin() + maxCandidates);
-
-                    (*candidates)[qidx].swap(temp);
+                    if (min[i] > max[i]) {
+                        min[i] = max[i];
+                    }
                 }
             }
 
-            candidatesTotal += timerStop(&candidatesTimer);
+            // clear hits, reset max and scores
+            timerStart(&deleteTimer);
 
-            // delete automaton
-            timerStart(&automatonCreateTimer);
+            for (int i = 0; i < (int) groupLen; ++i) {
+                if (max[i] == 0) {
+                    continue;
+                }
 
-            automatonDelete(automaton);
+                fill_n(scores.begin() + dstarts[i], dlens[i], 0);
+            }
 
-            delete[] queriesPart;
+            fill(max.begin(), max.end(), 0);
 
-            automatonCreateTotal += timerStop(&automatonCreateTimer);
-
-            queryIdx += groupLen;
+            deleteTotal += timerStop(&deleteTimer);
         }
-    }
 
-    // extract indices if last database segment
-    timerStart(&indicesTimer);
+        // sort and pick top candidates
+        timerStart(&candidatesTimer);
 
-    if (threadData->extractIndices) {
-        for (int queryIdx = queryStart; queryIdx < queryEnd; ++queryIdx) {
+        for (int i = 0; i < (int) groupLen; ++i) {
+            int qidx = (*qsequences)[queryIdx + i].idx;
 
-            int qidx = (*qsequences)[queryIdx].idx;
+            if ((*candidates)[qidx].size() > maxCandidates) {
+                stable_sort(
+                    (*candidates)[qidx].begin(),
+                    (*candidates)[qidx].end(),
+                    candidateByScore);
 
-            (*indices)[qidx].reserve((*candidates)[qidx].size());
+                vector<Candidate> temp(
+                    (*candidates)[qidx].begin(),
+                    (*candidates)[qidx].begin() + maxCandidates);
 
-            for (int j = 0; j < (*candidates)[qidx].size(); ++j) {
-                (*indices)[qidx].push_back((*candidates)[qidx][j].idx);
-            }   
-
-            vector<Candidate>().swap((*candidates)[qidx]);
-
-            sort((*indices)[qidx].begin(), (*indices)[qidx].end());
+                (*candidates)[qidx].swap(temp);
+            }
         }
-    }
 
-    indicesTotal += timerStop(&indicesTimer);
+        candidatesTotal += timerStop(&candidatesTimer);
+
+        // delete automaton
+        timerStart(&automatonCreateTimer);
+
+        automatonDelete(automaton);
+
+        delete[] queriesPart;
+
+        automatonCreateTotal += timerStop(&automatonCreateTimer);
+
+        queryIdx += groupLen;
+    }
 
     delete threadData;
 
     threadTotal += timerStop(&threadTimer);
 
-    if (queryStart == 0) {
+    if (targetStart == 0) {
         timerPrint("threadTime", threadTotal);
         timerPrint("  initTime", initTotal);
         timerPrint("  automatonCreateTimer", automatonCreateTotal);
         timerPrint("  automatonTime", automatonTotal);
         timerPrint("  deleteTime", deleteTotal);
         timerPrint("  candidatesTime", candidatesTotal);
-        timerPrint("  indicesTime", indicesTotal);
     }
 
     return NULL;

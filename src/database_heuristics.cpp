@@ -434,7 +434,7 @@ static void* findCandidates(void* params) {
             vector<int> max(groupLen, 0);
             vector<int> min(groupLen, 0);
 
-            vector<int> scores(scoresLen, 0);
+            vector<unsigned short> scores(scoresLen, 0);
 
             for (int i = 0; i < groupLen; ++i) {
                 int qidx = (*qsequences)[queryIdx + i].idx;

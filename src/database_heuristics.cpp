@@ -279,7 +279,9 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
 
     for (int i = 0; i < queriesLen; ++i) {
 
-        if (qsequences[i].len + segmentLen > segmentMaxLen) {
+        segmentLen += qsequences[i].len;
+
+        if (segmentLen > segmentMaxLen) {
             qsegments.push_back(i);
             segmentLen = 0;
 
@@ -287,8 +289,6 @@ static void sortQueries(vector<Sequence>& qsequences, vector<int>& qsegments,
                 break;
             }
         }
-
-        segmentLen += qsequences[i].len;
     }
 
     while ((int) qsegments.size() != threadLen) {

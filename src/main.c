@@ -359,6 +359,7 @@ int main(int argc, char* argv[]) {
     swTotal = timerStop(&swTimer);
     timerPrint("hdbPart", dbTotal);
     timerPrint("swPart", swTotal);
+    timerPrint("    In seconds", (double)swTotal / 1e6);
 
     scorerDelete(scorer);
 

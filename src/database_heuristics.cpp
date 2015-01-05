@@ -190,7 +190,9 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
     seedsDelete(seeds);
 
-    timerPrint("HeuristicsTotal", timerStop(&timer));
+    long long int heuTotal = timerStop(&timer);
+    timerPrint("HeuristicsTotal", heuTotal);
+    timerPrint("    In seconds", (double)heuTotal / 1e6);
 
     return static_cast<void*>(indices);
 }

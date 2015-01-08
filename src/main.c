@@ -68,6 +68,9 @@ static struct option options[] = {
     {"seed-length", required_argument, 0, 's'},
     {"max-candidates", required_argument, 0, 'd'},
     {"permute", no_argument, 0, 'p'},
+    {"sensitive", no_argument, 0, 'S'},
+    {"fast", no_argument, 0, 'f'},
+    {"dbchunk", required_argument, 0, 'D'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
 };
@@ -127,6 +130,11 @@ int main(int argc, char* argv[]) {
     int maxCandidates = 5000;
 
     int permute = 0;
+
+    int sensitive = 0;
+    int fast = 0;
+
+    float dbchunk = 2;
 
     while (1) {
 
@@ -188,6 +196,15 @@ int main(int argc, char* argv[]) {
         case 'd':
             maxCandidates = atoi(optarg);
             break;
+        case 'S':
+            sensitive = 1;
+            break;
+        case 'f':
+            fast = 1;
+            break;
+        case 'D':
+            dbchunk = atof(optarg);
+            break;
         default:
             help();
             return -1;
@@ -199,6 +216,17 @@ int main(int argc, char* argv[]) {
 
     ASSERT(seedLen > 2 && seedLen < 6, "seed length possible values = 3,4,5");
     ASSERT(maxCandidates > 0, "max-candidates possible values = [1, infinity>");
+
+    ASSERT(dbchunk > 0, "invalid dbchunk size");
+
+    if (sensitive) {
+        seedLen = 3;
+        permute = 1;
+        maxCandidates = 30000;
+    } else if (fast) {
+        seedLen = 5;
+        maxCandidates = 5000;
+    }
 
     if (forceCpu) {
         cards = NULL;
@@ -246,6 +274,8 @@ int main(int argc, char* argv[]) {
         DbAlignment*** dbAlignments = NULL;
         int* dbAlignmentsLens = NULL;
 
+        int dbReadSize = (int) (dbchunk * 1000000000);
+
         Chain** database = NULL;
         int databaseLen = 0;
         int databaseStart = 0;
@@ -260,7 +290,7 @@ int main(int argc, char* argv[]) {
         while (1) {
 
             int status = readFastaChainsPart(&database, &databaseLen, handle,
-                serialized, 2000000000); // ~2GB
+                serialized, dbReadSize);
 
             DbAlignment*** dbAlignmentsPart =
                 (DbAlignment***) malloc(queriesLen * sizeof(DbAlignment**));
@@ -483,8 +513,12 @@ static void help() {
     "    -p, --permute <int>\n"
     "        permuting each seed position if the substitution score is greater\n"
     "        than input value\n"
-    "    -n, --agroup-length <int>\n"
-    "        number of queries in automaton"
+    "    --sensitive\n"
+    "        equals -s 3 -p --max-candidates 30000\n"
+    "    --fast\n"
+    "        equals -s 5 --max-candidates 5000\n"
+    "    --dbchunk <float>\n"
+    "        size of database (in GB) to be read and aligned at a time"
     "    -h, -help\n"
     "        prints out the help\n");
 }

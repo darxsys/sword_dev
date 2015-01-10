@@ -190,15 +190,17 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
                 (*candidates)[i].end(),
                 candidateByScore);
 
-            vector<Candidate> temp(
-                (*candidates)[i].begin(),
-                (*candidates)[i].begin() + maxCandidates);
+            if ((int) (*candidates)[i].size() > maxCandidates) {
+                vector<Candidate> temp(
+                    (*candidates)[i].begin(),
+                    (*candidates)[i].begin() + maxCandidates);
 
-            (*candidates)[i].swap(temp);
+                (*candidates)[i].swap(temp);
+            }
         }
 
         for (int i = 0; i < threadLen; ++i) {
-            candidatesDelete(candidatesParts[i]);           
+            candidatesDelete(candidatesParts[i]);
         }
 
         delete[] candidatesParts;
@@ -328,7 +330,7 @@ static void preprocDatabase(vector<Sequence>& tsequencesShort, vector<int>& tseg
     for (int i = databaseStart; i < databaseLen; ++i) {
         int len = chainGetLength(database[i]);
 
-        if (len > 5000) {
+        if (len > 2000) {
             tsequencesLong.emplace_back(i, len);
             totalLongLen += len;
         } else {
@@ -374,8 +376,9 @@ static void preprocDatabase(vector<Sequence>& tsequencesShort, vector<int>& tseg
     sort(tsequencesLong.begin(), tsequencesLong.end(), sequenceByLen);
 
     tsegmentsLong.push_back(0);
+    tsegmentsLong.push_back(0);
 
-    segmentMaxLen = totalLongLen / (threadLen - 1);
+    segmentMaxLen = totalLongLen / (threadLen - 2);
     segmentLen = 0;
     
     for (int i = 0; i < (int) tsequencesLong.size(); ++i) {
@@ -433,7 +436,7 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
             int len = (*qsequences)[i].len + maxTargetLen -
                 2 * seedLen + 1;
 
-            if (scoresLen + len > 125000) { // ~0.5MB
+            if (scoresLen + len > 250000) { // ~0.5MB
                 break;
             }
 
@@ -449,11 +452,9 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
 
         automatonCreate(queriesPart, groupLen, seeds, seedLen, &automaton);
 
-        // dlen, dstart
         vector<int> dlens(groupLen, 0);
         vector<int> dstarts(groupLen + 1, 0);
 
-        // max, min
         vector<unsigned short> max(groupLen, 0);
         vector<unsigned short> min(groupLen, 0);
 
@@ -470,7 +471,6 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
 
             ACNode* state = automaton;
 
-            // Chain* target = database[targetIdx];
             Chain* target = database[(*tsequences)[targetIdx].idx];
             int targetLen = chainGetLength(target);
             const char* tcodes = chainGetCodes(target);
@@ -481,7 +481,7 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
             }
 
             // find hits
-             for (int k = 0; k < targetLen; ++k) {
+            for (int k = 0; k < targetLen; ++k) {
                 int c = tcodes[k];
 
                 while (!state->edge[c]) {
@@ -492,10 +492,7 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
                 state = state->edge[c];
 
                 if (state->final) {
-                    // hits.emplace_back(k - seedLen + 1, state->positions);
-
                     int tstart = k - seedLen + 1;
-                    // int code = state->positions[0];
 
                     for (int i = 1; i < (int) state->positions.size(); i += 2) {
                         int idx = state->positions[i];

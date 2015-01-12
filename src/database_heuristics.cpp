@@ -50,19 +50,19 @@ struct ThreadData{
     vector<int>* tsegmentsLong;
     Seeds* seeds;
     int seedLen;
-    Candidates* candidatesGlobal;
-    Candidates* candidatesLocal;
+    Candidates* candidates;
+    Mutex* candidatesMutex;
     int maxCandidates;
 
     ThreadData(int threadIdx_, Chain** queries_, vector<Sequence>* qsequences_,
-            Chain** database_, vector<Sequence>* tsequencesShort_, vector<int>* tsegmentsShort_,
+            Chain** database_, vector<Sequence>* tsequencesShort_,vector<int>* tsegmentsShort_,
             vector<Sequence>* tsequencesLong_, vector<int>* tsegmentsLong_, Seeds* seeds_,
-            int seedLen_, Candidates* candidatesGlobal_, Candidates* candidatesLocal_,
+            int seedLen_, Candidates* candidates_, Mutex* candidatesMutex_,
             int maxCandidates_) :
         threadIdx(threadIdx_), queries(queries_), qsequences(qsequences_), database(database_),
         tsequencesShort(tsequencesShort_), tsegmentsShort(tsegmentsShort_),
         tsequencesLong(tsequencesLong_), tsegmentsLong(tsegmentsLong_), seeds(seeds_),
-        seedLen(seedLen_), candidatesGlobal(candidatesGlobal_), candidatesLocal(candidatesLocal_),
+        seedLen(seedLen_), candidates(candidates_), candidatesMutex(candidatesMutex_),
         maxCandidates(maxCandidates_) {
     }
 };
@@ -101,7 +101,7 @@ static void preprocDatabase(vector<Sequence>& tsequencesShort, vector<int>& tseg
 
 static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qsequences,
     Chain** database, vector<Sequence>* tsequences, vector<int>* tsegments, Seeds* seeds,
-    int seedLen, Candidates* candidatesGlobal, Candidates* candidates, int maxCandidates);
+    int seedLen, Candidates* candidates, Mutex* candidatesMutex, int maxCandidates);
 
 static void* findCandidates(void* params);
 
@@ -143,6 +143,9 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
     readFastaChainsPartInit(&database, &databaseLen, &handle, &serialized, databasePath);
 
+    Mutex candidatesMutex;
+    mutexCreate(&candidatesMutex);
+
     while (1) {
 
         int status = 1;
@@ -158,14 +161,12 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
             database, databaseLen, databaseStart, threadLen);
 
         ThreadPoolTask** threadTasks = new ThreadPoolTask*[threadLen];
-        Candidates** candidatesParts = new Candidates*[threadLen];
 
         for (int i = 0; i < threadLen; ++i) {
-            candidatesCreate(&candidatesParts[i], queriesLen);
 
             ThreadData* threadData = new ThreadData(i, queries, &qsequences, database,
                 &tsequencesShort, &tsegmentsShort, &tsequencesLong, &tsegmentsLong,
-                seeds, seedLen, candidates, candidatesParts[i], maxCandidates);
+                seeds, seedLen, candidates, &candidatesMutex, maxCandidates);
 
             threadTasks[i] = threadPoolSubmit(findCandidates, static_cast<void*>(threadData));
         }
@@ -175,35 +176,6 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
             threadPoolTaskDelete(threadTasks[i]);
         }
 
-        // merge candidates
-        for (int i = 0; i < queriesLen; ++i) {
-            for (int j = 0; j < threadLen; ++j) {
-                (*candidates)[i].insert((*candidates)[i].end(),
-                    (*candidatesParts[j])[i].begin(),
-                    (*candidatesParts[j])[i].end());
-
-                vector<Candidate>().swap((*candidatesParts[j])[i]);
-            }
-
-            stable_sort(
-                (*candidates)[i].begin(),
-                (*candidates)[i].end(),
-                candidateByScore);
-
-            if ((int) (*candidates)[i].size() > maxCandidates) {
-                vector<Candidate> temp(
-                    (*candidates)[i].begin(),
-                    (*candidates)[i].begin() + maxCandidates);
-
-                (*candidates)[i].swap(temp);
-            }
-        }
-
-        for (int i = 0; i < threadLen; ++i) {
-            candidatesDelete(candidatesParts[i]);
-        }
-
-        delete[] candidatesParts;
         delete[] threadTasks;
 
         if (status == 0) {
@@ -227,6 +199,8 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
         sort((*indices)[i].begin(), (*indices)[i].end());
     }
+
+    mutexDelete(&candidatesMutex);
 
     fclose(handle);
 
@@ -410,7 +384,7 @@ static void preprocDatabase(vector<Sequence>& tsequencesShort, vector<int>& tseg
 
 static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qsequences,
     Chain** database, vector<Sequence>* tsequences, vector<int>* tsegments, Seeds* seeds,
-    int seedLen, Candidates* candidatesGlobal, Candidates* candidates, int maxCandidates) {
+    int seedLen, Candidates* candidates, Mutex* candidatesMutex, int maxCandidates) {
 
     int targetStart = tsegments->at(threadIdx);
     int targetEnd = tsegments->at(threadIdx + 1);
@@ -420,6 +394,9 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
     int queriesLen = (*qsequences).size();
     int maxTargetLen = (*tsequences)[targetEnd - 1].len;
     int groups = 0;
+
+    Candidates* candidatesPart = NULL;
+    candidatesCreate(&candidatesPart, queriesLen);
 
     ACNode* automaton = NULL;
 
@@ -463,8 +440,8 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
         for (int i = 0; i < groupLen; ++i) {
             int qidx = (*qsequences)[queryIdx + i].idx;
 
-            min[i] = (*candidatesGlobal)[qidx].size() == maxCandidates ?
-                (*candidatesGlobal)[qidx].back().score : 100000000;
+            min[i] = (*candidates)[qidx].size() > 0 ?
+                (*candidates)[qidx].back().score : 100000000;
         }
 
         for (int targetIdx = targetStart; targetIdx < targetEnd; ++targetIdx) {
@@ -515,9 +492,10 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
                 }
 
                 int qidx = (*qsequences)[queryIdx + i].idx;
+                int candidatesLen = (*candidates)[qidx].size() + (*candidatesPart)[qidx].size();
 
-                if ((*candidatesGlobal)[qidx].size() < maxCandidates || max[i] > min[i]) {
-                    (*candidates)[qidx].emplace_back(max[i], (*tsequences)[targetIdx].idx);
+                if (candidatesLen < maxCandidates || max[i] > min[i]) {
+                    (*candidatesPart)[qidx].emplace_back(max[i], (*tsequences)[targetIdx].idx);
 
                     if (min[i] > max[i]) {
                         min[i] = max[i];
@@ -538,22 +516,32 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
         }
 
         // sort and pick top candidates
+        mutexLock(candidatesMutex);
+
         for (int i = 0; i < (int) groupLen; ++i) {
             int qidx = (*qsequences)[queryIdx + i].idx;
 
-            if ((*candidates)[qidx].size() > maxCandidates) {
-                stable_sort(
-                    (*candidates)[qidx].begin(),
-                    (*candidates)[qidx].end(),
-                    candidateByScore);
+            (*candidates)[qidx].insert((*candidates)[qidx].end(),
+                (*candidatesPart)[qidx].begin(),
+                (*candidatesPart)[qidx].end());
 
+            stable_sort(
+                (*candidates)[qidx].begin(),
+                (*candidates)[qidx].end(),
+                candidateByScore);
+
+            if ((*candidates)[qidx].size() > maxCandidates) {
                 vector<Candidate> temp(
                     (*candidates)[qidx].begin(),
                     (*candidates)[qidx].begin() + maxCandidates);
 
                 (*candidates)[qidx].swap(temp);
             }
+
+            vector<Candidate>().swap((*candidatesPart)[qidx]);
         }
+
+        mutexUnlock(candidatesMutex);
 
         // delete automaton
         automatonDelete(automaton);
@@ -562,6 +550,8 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
 
         queryIdx += groupLen;
     }
+
+    candidatesDelete(candidatesPart);
 }
 
 static void* findCandidates(void* params) {
@@ -576,8 +566,8 @@ static void* findCandidates(void* params) {
 
     scoreSequences(threadData->threadIdx, threadData->queries, threadData->qsequences,
         threadData->database, threadData->tsequencesShort, threadData->tsegmentsShort,
-        threadData->seeds, threadData->seedLen, threadData->candidatesGlobal,
-        threadData->candidatesLocal, threadData->maxCandidates);
+        threadData->seeds, threadData->seedLen, threadData->candidates,
+        threadData->candidatesMutex, threadData->maxCandidates);
 
     long long shortTotal = timerStop(&shortTimer);
 
@@ -586,8 +576,8 @@ static void* findCandidates(void* params) {
 
     scoreSequences(threadData->threadIdx, threadData->queries, threadData->qsequences,
         threadData->database, threadData->tsequencesLong, threadData->tsegmentsLong,
-        threadData->seeds, threadData->seedLen, threadData->candidatesGlobal,
-        threadData->candidatesLocal, threadData->maxCandidates);
+        threadData->seeds, threadData->seedLen, threadData->candidates,
+        threadData->candidatesMutex, threadData->maxCandidates);
 
     long long longTotal = timerStop(&longTimer);
 

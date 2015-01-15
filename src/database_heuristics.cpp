@@ -492,9 +492,10 @@ static void scoreSequences(int threadIdx, Chain** queries, vector<Sequence>* qse
                 }
 
                 int qidx = (*qsequences)[queryIdx + i].idx;
-                int candidatesLen = (*candidates)[qidx].size() + (*candidatesPart)[qidx].size();
+                int flag = (*candidates)[qidx].size() < maxCandidates &&
+                    (*candidatesPart)[qidx].size() < maxCandidates;
 
-                if (candidatesLen < maxCandidates || max[i] > min[i]) {
+                if (flag || max[i] >= min[i]) {
                     (*candidatesPart)[qidx].emplace_back(max[i], (*tsequences)[targetIdx].idx);
 
                     if (min[i] > max[i]) {

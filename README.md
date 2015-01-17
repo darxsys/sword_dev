@@ -1,4 +1,4 @@
-swsharp
+SWORD
 =======
 
 BLAST killer.

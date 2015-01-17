@@ -15,6 +15,4 @@ TODO:
 
 2) Dodati timere pod debug flag
 
-3) Popraviti longDistribuion za threadLen manji od 3
-
-4) Uravnoteziti dretve na drugaciji nacin (mozda!)
+3) Uravnoteziti dretve na drugaciji nacin (mozda!)

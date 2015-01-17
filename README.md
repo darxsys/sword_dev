@@ -18,5 +18,3 @@ TODO:
 3) Popraviti longDistribuion za threadLen manji od 3
 
 4) Uravnoteziti dretve na drugaciji nacin (mozda!)
-
-7) Staviti testove sličnosti i vremena izvođenja? (Milu treba pitat)

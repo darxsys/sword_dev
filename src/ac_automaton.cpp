@@ -5,76 +5,58 @@
 #include <vector>
 #include <queue>
 #include <unordered_map>
-#include <algorithm>
 
 using namespace std;
 
-#include "swsharp/swsharp.h"
-#include "ac_automaton.h"
-#include "ac_node.h"
-#include "database_hash.h"
 #include "timer.h"
+#include "utils.h"
+#include "ac_automaton.h"
+#include "database_heuristics.h"
+#include "swsharp/swsharp.h"
 
 // ***************************************************************************
 // PUBLIC
 
-extern void* partialIndicesAutomatonCreate(Chain** database, 
-    int databaseStart, int databaseLen, void* automata,
-    int automataLen, int seedLen, Scorer* scorer);
+extern void automatonCreate(Chain** queries, int querieslen, Seeds* seeds,
+    int seedLen, ACNode** automaton);
 
-extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen);
-extern void automatonDeleteAutomata(void* automata, int automataLen);
+extern void automatonDelete(ACNode* automaton);
 
 // ***************************************************************************
 
 // ***************************************************************************
 // PRIVATE
-typedef vector<vector<int> > Candidates;
-typedef vector<int> Candidate;
 
-static void extractSeed(Chain* query, int pos, int len, char** output);
+static void automatonAddWord(ACNode* automaton, char* word, int wordLen, 
+    int queryIdx, int location);
 
-static void automatonAddWord(ACNode* root, char* word, int wordLen, 
-    int location);
-static void automatonSetSupply(ACNode* root);
-
-static ACNode* automatonCreate(int seedLen, Chain* query);
-static void automatonDelete(ACNode* root);
-
-static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen);
+static void automatonSetSupply(ACNode* automaton);
 
 static int seedCode(Chain* chain, int pos, int seedLen);
 
-static void databaseStatistics(Candidates* candidates, 
-    int candidatesLen, int databaseLen);
+static int seedCode(char* seed, int seedLen);
 
 // ***************************************************************************
 
 // ***************************************************************************
 // PUBLIC
-static long long usecHits = 0;
-static long long tsec = 0;
-static long long hsec = 0;
 
-extern void* partialIndicesAutomatonCreate(Chain** database,
-    int databaseStart, int databaseLen, void* automata,
-    int automataLen, int seedLen, Scorer* scorer) {
+extern void automatonCreate(Chain** queries, int queriesLen, Seeds* seeds,
+    int seedLen, ACNode** automaton) {
 
-    vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
-    Candidates* candidates = new Candidates();
+    (*automaton) = new ACNode();
 
-    Timeval queryTimeval;
-    static long long usec = 0;
+    for (int queryIdx = 0; queryIdx < queriesLen; ++queryIdx) {
 
-    fprintf(stderr, "Num queries: %u\n", aut->size());
+        Chain* query = queries[queryIdx];
+        int queryLen = chainGetLength(query);
 
-    Timeval hits;
+        for (int qstart = 0; qstart < queryLen - seedLen + 1; ++qstart) {
 
-    for (int i = 0; i < aut->size(); ++i) {
+            int code = seedCode(query, qstart, seedLen);
+            int size = (*seeds)[code].size();
 
-        ACNode* automaton = (*aut)[i];
-        Candidate queryCandidates;
-
+<<<<<<< HEAD
         for (int j = databaseStart; j < databaseLen; ++j) {
             Chain* target = database[j];
             // TODO: (querypos, targetpos, seedcode) 
@@ -85,153 +67,87 @@ extern void* partialIndicesAutomatonCreate(Chain** database,
 
             if (numHits > 1) {
                 queryCandidates.push_back(j);
+=======
+            for (int i = 0; i < size; ++i) {
+                automatonAddWord(*automaton, (*seeds)[code][i], seedLen,
+                    queryIdx, qstart);
+>>>>>>> 7c197e0ea41efe76fdec07502bf0db5e80ed8d71
             }
+        }
+    }
 
-            // printf("\n");
+    automatonSetSupply(*automaton);
+}
+
+extern void automatonDelete(ACNode* automaton) {
+    queue<ACNode*> nodeQ;
+
+    for (int i = 0; i < 26; ++i) {
+        if (automaton->edge[i] && automaton->edge[i] != automaton) {
+            nodeQ.push(automaton->edge[i]);
+        }
+    }
+
+    while (!nodeQ.empty()) {
+        ACNode* curr = nodeQ.front();
+        // fprintf(stderr, "%p\n", curr);
+
+        nodeQ.pop();
+
+        for(int i = 0; i < 26; ++i) {
+            if (curr->edge[i]) {
+                nodeQ.push(curr->edge[i]);
+            }
         }
 
-        (*candidates).push_back(queryCandidates);
+        delete curr;
     }
 
-    // for every query, output database reduction and then average database reduction
-    databaseStatistics(candidates, automataLen, databaseLen);
-
-    // timerPrint("Hits", usecHits);
-    // timerPrint("Transitions", tsec);
-    // timerPrint("Hit count", hsec);    
-
-    return candidates;
-}
-
-extern void* automatonCreateAutomata(int seedLen, Chain** queries, int queriesLen) {
-    vector<ACNode*>* automata = new vector<ACNode*>;
-
-    for (int i = 0; i < queriesLen; ++i) {
-        automata->push_back(automatonCreate(seedLen, queries[i]));
-    }
-
-    return static_cast<void*>(automata);
-}
-
-extern void automatonDeleteAutomata(void* automata, int automataLen) {
-    vector<ACNode*>* aut = static_cast<vector<ACNode*>*>(automata);
-    for (int i = 0; i < automataLen; ++i) {
-        automatonDelete((*aut)[i]);
-     }
-
-    delete aut;
+    delete automaton;
 }
 
 // ***************************************************************************
 
 // ***************************************************************************
 // PRIVATE
-static int automatonTargetHits(ACNode* automaton, Chain* target, int seedLen) {
 
-    ACNode* state = automaton;
-    int targetLen = chainGetLength(target);
+static void automatonAddWord(ACNode* automaton, char* word, int wordLen, 
+    int queryIdx, int location) {
 
-    int numHits = 0;
-
-    Timeval transitions;
-    Timeval hits;
-
-    for (int i = 0; i < targetLen; ++i) {
-        char c = toupper(chainGetChar(target, i));
-
-        // timerStart(&transitions);
-        while (!state->edge[c-'A']) {
-            state = state->fail;
-        }
-
-        if (state->edge[c-'A'] == state) {
-            continue;
-        }
-
-        state = state->edge[c-'A'];
-        // tsec += timerStop(&transitions);
-
-        // timerStart(&hits);
-        if (state->size) {
-            // int code = seedCode(target, i - seedLen + 1, seedLen);
-            for (unsigned int j = 0; j < state->positions.size(); ++j) {
-                numHits++;
-                // fprintf(stderr, "%d %d %d\n", state->positions[j], i - seedLen + 1, code);
-            }
-        }
-
-        // hsec += timerStop(&hits);
-    }
-
-    return numHits;
-}
-
-
-static ACNode* automatonCreate(int seedLen, Chain* query) {
-    ACNode* root = new ACNode();
-    root->size = 0;
-
-    // first create a trie by sampling the query
-    int queryLen = chainGetLength(query);
-    char* seed = new char[seedLen+1];
-
-    // find all the seeds in the query and add them to the automaton
-    for (int i = 0; i < queryLen - seedLen + 1; ++i) {
-        extractSeed(query, i, seedLen, &seed);
-
-        automatonAddWord(root, seed, seedLen, i);
-    }
-
-    // now find all the supply links
-    automatonSetSupply(root);
-
-    delete[] seed;
-
-    return root;
-}
-
-static void extractSeed(Chain* query, int pos, int len, char** output) {
-    for (int i = pos; i < pos + len; ++i) {
-
-        (*output)[i-pos] = toupper(chainGetChar(query, i)); 
-    }
-
-    (*output)[len] = '\0';
-}
-
-static void automatonAddWord(ACNode* root, char* word, int wordLen, 
-    int location) {
-
-    ACNode* q = root;
+    ACNode* q = automaton;
 
     for (int i = 0; i < wordLen; ++i) {
         if (!q->edge[word[i] - 'A']) {
             // create new node
             ACNode* next = new ACNode();
             q->edge[word[i] - 'A'] = next;
-
-            root->size++;
         }
 
         q = q->edge[word[i] - 'A'];
     }
 
-    q->size = 1;
+    q->final = 1;
+
+    if (q->positions.size() == 0) {
+        q->positions.push_back(seedCode(word, wordLen));
+    }
+
+    q->positions.push_back(queryIdx);
     q->positions.push_back(location);
 }
 
-static void automatonSetSupply(ACNode* root) {
-    ACNode* q = root;
-    root->fail = root;
+static void automatonSetSupply(ACNode* automaton) {
+    ACNode* q = automaton;
+    automaton->fail = automaton;
 
     queue<ACNode*> nodeQ;
 
     for (int i = 0; i < 26; ++i) {
-        if (root->edge[i]) {
-            root->edge[i]->fail = root;
-            nodeQ.push(root->edge[i]);
+        if (automaton->edge[i]) {
+            automaton->edge[i]->fail = automaton;
+            nodeQ.push(automaton->edge[i]);
         } else {
-            root->edge[i] = root;
+            automaton->edge[i] = automaton;
         }
     }
 
@@ -254,104 +170,36 @@ static void automatonSetSupply(ACNode* root) {
 
             next->fail = ft->edge[i];
 
-            if (ft->edge[i]->size) {
-                next->size = 1;
+            if (ft->edge[i]->final) {
+                next->final = 1;
             }
         }    
     }
 }    
 
-/**
-    Deletes all the automaton nodes using bfs.
-*/
-static void automatonDelete(ACNode* root) {
-    queue<ACNode*> nodeQ;
-
-    for (int i = 0; i < 26; ++i) {
-        if (root->edge[i] && root->edge[i] != root) {
-            nodeQ.push(root->edge[i]);
-        }
-    }
-
-
-    while (!nodeQ.empty()) {
-        ACNode* curr = nodeQ.front();
-        // fprintf(stderr, "%p\n", curr);
-
-        nodeQ.pop();
-
-        for(int i = 0; i < 26; ++i) {
-            if (curr->edge[i])
-                nodeQ.push(curr->edge[i]);
-        }
-
-        delete curr;
-    }
-
-    delete root;
-}
-
-//TODO: put this to some utils.c
 static int seedCode(Chain* chain, int pos, int seedLen) {
 
     int code = 0;
     int start = 5 * (seedLen - 1);
 
     for (int i = 0; i < seedLen; ++i) {
-        code += static_cast<int>(toupper(chainGetChar(chain, pos + i)) - 'A')
+        code += static_cast<int>(chainGetCode(chain, pos + i))
             << (start - 5 * i);
     }
 
     return code;
 }
 
-static void databaseStatistics(Candidates* candidates, 
-    int candidatesLen, int databaseLen) {
+static int seedCode(char* seed, int seedLen) {
 
-    double sum = 0;
-    int min = -1;
-    int max = -1;
+    int code = 0;
+    int start = 5 * (seedLen - 1);
 
-    vector<int> vals;
-
-    for (int i = 0; i < candidatesLen; ++i) {
-        int num = (*candidates)[i].size();
-        sum += databaseLen - num;
-
-        if (min == -1 || databaseLen - num < min) {
-            min = databaseLen - num;
-        }
-
-        if (databaseLen - num > max) {
-            max = databaseLen - num;
-        }
-
-        vals.push_back(databaseLen - num);
-
-        // fprintf(stderr, "Query: %d eliminated %d seqs\n", i, databaseLen - num);
+    for (int i = 0; i < seedLen; ++i) {
+        code += static_cast<int>(toupper(seed[i] - 'A')) << (start - 5 * i);
     }
 
-    sort(vals.begin(), vals.end());
-
-    double median = 0;
-    if (vals.size() % 2) {
-        median = vals[vals.size()/2];
-    } else {
-        median = (vals[vals.size()/2-1] + vals[vals.size()/2]) / 2.;
-    }
-
-    fprintf(stderr, "Db size: %d\n", databaseLen);
-    fprintf(stderr, "Median eliminated: %f\n", median);
-    fprintf(stderr, "Min eliminated: %d\n", min);
-    fprintf(stderr, "Max eliminated: %d\n", max);
-    fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen);
-
-    fprintf(stderr, "Percentages\n");
-    fprintf(stderr, "Median eliminated: %lf\n", median / databaseLen);
-    fprintf(stderr, "Min eliminated: %lf\n", min / (double) databaseLen);
-    fprintf(stderr, "Max eliminated: %lf\n", max / (double) databaseLen);
-    fprintf(stderr, "Average eliminated: %lf\n", sum / candidatesLen / databaseLen);
-
+    return code;
 }
 
 // ***************************************************************************

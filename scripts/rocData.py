@@ -130,7 +130,7 @@ def help():
     "        false positive rate\n"
     "    -n, --name <string>\n"
     "        default: program\n"
-    "        name of executable that produced the input file"
+    "        name of executable that produced the input file\n"
     "    -h, --help\n"
     "        prints out the help")
 

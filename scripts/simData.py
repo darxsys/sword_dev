@@ -92,7 +92,7 @@ def processInput(inputPath):
     return alignments
 
 def printEvalueData(alignments1, alignments2):
-    evalues = [1.0e-250, 1.0e-100, 1.0e-75, 1.0e-50, 1.0e-25, 1.0e-10, 1.0e-7, 1.0e-4, 1.0e-2, 1, 10]
+    evalues = [1.0e-250, 1.0e-100, 1.0e-75, 1.0e-50, 1.0e-25, 1.0e-10, 1.0e-7, 1.0e-4, 1.0e-3, 1.0e-2, 1, 10]
 
     print "Evalue, Equal, %"
 

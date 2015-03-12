@@ -203,10 +203,10 @@ def help():
     "arguments:\n"
     "    -i, --first <file>\n"
     "        (required)\n"
-    "        first input file in bm8 format (blast m8 tabular output format)\n"
+    "        benchmark results file in bm8 format (blast m8 tabular output format)\n"
     "    -j, --second <file>\n"
     "        (required)\n"
-    "        second input file in bm8 format (blast m8 tabular output format)\n"
+    "        results file in bm8 format (blast m8 tabular output format)\n"
     "    -h, --help\n"
     "        prints out the help")
 

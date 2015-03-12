@@ -41,10 +41,10 @@ def main():
     alignments1 = processInput(firstPath)
     alignments2 = processInput(secondPath)
 
-    print firstPath + " vs " + secondPath
+    print(firstPath + " vs " + secondPath)
 
     queryLen = len(alignments1) if len(alignments1) > len(alignments2) else len(alignments2)
-    print "QueryLen = " + str(queryLen)
+    print("QueryLen = " + str(queryLen))
 
     printEvalueData(alignments1, alignments2)
     printRankData(alignments1, alignments2)
@@ -97,7 +97,7 @@ def processInput(inputPath):
 def printEvalueData(alignments1, alignments2):
     evalues = [1.0e-250, 1.0e-100, 1.0e-75, 1.0e-50, 1.0e-25, 1.0e-10, 1.0e-7, 1.0e-4, 1.0e-3, 1.0e-2, 1, 10]
 
-    print "Evalue, Equal, %"
+    print("Evalue, Equal, %")
 
     for evalue in evalues:
         equal = 0
@@ -125,14 +125,14 @@ def printEvalueData(alignments1, alignments2):
             totalLen += len(temp1)
 
         total = 0 if totalLen == 0 else float(equal) / float(totalLen)
-        print str(evalue) + ", " + str(equal) + ", " + str(total)
+        print(str(evalue) + ", " + str(equal) + ", " + str(total))
 
-    print ""
+    print("")
 
 def printRankData(alignments1, alignments2):
     ranks = [10, 25, 50, 75, 100, 150, 200, 300, 400, 500]
 
-    print "Rank, Equal, %"
+    print("Rank, Equal, %")
 
     for rank in ranks:
         equal = 0
@@ -160,12 +160,12 @@ def printRankData(alignments1, alignments2):
             totalLen += len(temp1)
 
         total = 0 if totalLen == 0 else float(equal) / float(totalLen)
-        print str(rank) + ", " + str(equal) + ", " + str(total)
+        print(str(rank) + ", " + str(equal) + ", " + str(total))
 
-    print ""
+    print("")
 
 def printAlignLenData(alignments1, alignments2):
-    print "AlignLen Equal, %"
+    print("AlignLen Equal, %")
 
     equal = 0
     totalLen = 0
@@ -188,7 +188,7 @@ def printAlignLenData(alignments1, alignments2):
                 totalLen += 1
 
     total = 0 if totalLen == 0 else float(equal) / float(totalLen)
-    print str(equal) + ", " + str(total)
+    print(str(equal) + ", " + str(total))
 
 #******************************************************************************
 #******************************************************************************

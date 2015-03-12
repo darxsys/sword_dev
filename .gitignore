@@ -21,8 +21,9 @@
 *.la
 *.a
 *.lib
-
+*.d
 # Executables
 *.exe
 *.out
 *.app
+sword_dev

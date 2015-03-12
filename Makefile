@@ -4,7 +4,7 @@ CU = nvcc
 LD = nvcc
 DX = doxygen
 
-NAME = swsharpdbh
+NAME = sword_dev
 
 OBJ_DIR = obj
 SRC_DIR = src

@@ -81,6 +81,9 @@ def processInput(inputPath, superFamilies):
         if "[WARNING:" in input_[i] or "Using:" in input_[i] or "Query id" in input_[i]:
             continue;
 
+        if "CONVERGED!" in input_[i]:
+            continue;
+
         queryName = input_[i].split('\t', 1)[0]
         targetName = input_[i].split('\t', 2)[1]
 

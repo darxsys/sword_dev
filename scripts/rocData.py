@@ -84,10 +84,10 @@ def processInput(inputPath, superFamilies):
         if "CONVERGED!" in input_[i]:
             continue;
 
-        queryName = input_[i].split('\t', 1)[0]
-        targetName = input_[i].split('\t', 2)[1]
+        queryName = input_[i].split(None, 1)[0]
+        targetName = input_[i].split(None, 2)[1]
 
-        evalue = float(input_[i].split('\t')[-2:-1][0])
+        evalue = float(input_[i].split()[-2:-1][0])
 
         alignments.append([evalue, superFamilies[queryName] == superFamilies[targetName]])
 

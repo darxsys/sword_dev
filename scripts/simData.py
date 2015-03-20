@@ -71,22 +71,22 @@ def processInput(inputPath):
         if "CONVERGED!" in input_[i]:
             continue;
 
-        queryName = input_[i].split('\t', 1)[0]
+        queryName = input_[i].split(None, 1)[0]
 
         if not queryName in alignments:
             alignments[queryName] = []
             sameAligments = []
             rank = 1
 
-        targetName = input_[i].split('\t', 2)[1]
+        targetName = input_[i].split(None, 2)[1]
 
         if targetName in sameAligments:
             continue
 
         sameAligments.append(targetName)
 
-        alignLen = int(input_[i].split("\t", 4)[3])
-        evalue = float(input_[i].split('\t')[-2:-1][0])
+        alignLen = int(input_[i].split(None, 4)[3])
+        evalue = float(input_[i].split()[-2:-1][0])
 
         alignments[queryName].append([targetName, alignLen, evalue, rank])
 

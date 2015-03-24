@@ -71,14 +71,14 @@ def processInput(inputPath):
         if "CONVERGED!" in input_[i]:
             continue;
 
-        queryName = input_[i].split(None, 1)[0]
+        queryName = input_[i].split(None, 1)[0][0:30]
 
         if not queryName in alignments:
             alignments[queryName] = []
             sameAligments = []
             rank = 1
 
-        targetName = input_[i].split(None, 2)[1]
+        targetName = input_[i].split(None, 2)[1][0:30]
 
         if targetName in sameAligments:
             continue

@@ -11,6 +11,14 @@
 
 using namespace std;
 
+#define ASSERT(expr, fmt, ...)\
+    do {\
+        if (!(expr)) {\
+            fprintf(stderr, "[ERROR]: " fmt "\n", ##__VA_ARGS__);\
+            exit(-1);\
+        }\
+    } while (0)
+
 #define SEED_IDX_LEN(n) ((n) == 3 ? 26426 : ((n) == 4 ? 845626 : 27060026))
 
 #define AA 20
@@ -37,6 +45,10 @@ extern void seedScoresDelete(int* seedScores);
 extern void dataCreate(Data** data, int len);
 
 extern void dataDelete(Data* data);
+
+extern void indicesDumpToFile(Data* indices, char* path);
+
+extern int indicesReadFromFile(Data* indices, char* path);
 
 // ***************************************************************************
 
@@ -197,6 +209,53 @@ extern void dataDelete(Data* data) {
     }
     data->clear();
     delete data;
+}
+
+extern void indicesDumpToFile(Data* indices, char* path) {
+
+    char* filePath = new char[BUFFER];
+    snprintf(filePath, BUFFER, "%s.indices", path);
+
+    FILE* dumpFile = fopen(filePath, "wb");
+
+    for (int i = 0; i < (int) indices->size(); ++i) {
+        int size = (int) (*indices)[i].size();
+
+        int error = fwrite(&size, sizeof(size), 1, dumpFile);
+        ASSERT(error == 1, "writing to dump file failed");
+
+        if (size > 0) {
+            error = fwrite(&((*indices)[i][0]), sizeof(int), size, dumpFile);
+            ASSERT(error = size, "writing to dump file failed");
+        }
+    }
+
+    fclose(dumpFile);
+    delete[] filePath;
+}
+
+extern int indicesReadFromFile(Data* indices, char* path) {
+
+    char* filePath = new char[BUFFER];
+    snprintf(filePath, BUFFER, "%s.indices", path);
+
+    FILE* dumpFile = fopen(filePath, "rb");
+    if (dumpFile == NULL) return 0;
+
+    for (int i = 0; i < (int) indices->size(); ++i) {
+        int size = -1;
+
+        int error = fread(&size, sizeof(size), 1, dumpFile);
+        ASSERT(error == 1, "reading from dump file failed");
+        ASSERT(sizr >= 0, "invalid size %d", size);
+
+        (*indices)[i].resize(size);
+        error = fread(&((*indices)[i][0]), sizeof(int), size, dumpFile);
+        ASSERT(error == size, "reading from dump file failed");
+    }
+
+    fclose(dumpFile);
+    delete[] filePath;
 }
 
 // ***************************************************************************

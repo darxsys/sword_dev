@@ -115,6 +115,13 @@ static void* findCandidates(void* params);
 extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seedLen,
     int maxCandidates, int hitThreshold, Scorer* scorer, int threadLen) {
 
+    Data* indices = NULL;
+    dataCreate(&indices, queriesLen);
+
+    if (indicesReadFromFile(indices, queryPath)) {
+        return static_cast<void*>(indices);
+    }
+
     Timeval timer;
     timerStart(&timer);
 
@@ -135,9 +142,6 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
 
     Candidates* candidates = NULL;
     candidatesCreate(&candidates, queriesLen);
-
-    Data* indices = NULL;
-    dataCreate(&indices, queriesLen);
 
     Chain** database = NULL;
     int databaseLen = 0;

@@ -26,6 +26,9 @@ extern void dataCreate(Data** data, int len);
 
 extern void dataDelete(Data* data);
 
+extern void indicesDumpToFile(Data* indices, char* path);
+
+extern int indicesReadFromFile(Data* indices, char* path);
 
 #ifdef __cplusplus
 }

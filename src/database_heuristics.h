@@ -7,9 +7,8 @@
 extern "C" {
 #endif
 
-extern void* databaseIndicesCreate(char* databasePath, Chain** queries,
-    int queriesLen, int seedLen, int maxCandidates, int progress,
-    int permute, Scorer* scorer, int aaScore);
+extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seedLen,
+    int maxCandidates, int hitThreshold, Scorer* scorer, int threadLen);
 
 extern void databaseIndicesDelete(void* indices_);
 

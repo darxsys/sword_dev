@@ -1,32 +1,10 @@
-/*
-swsharp - CUDA parallelized Smith Waterman with applying Hirschberg's and
-Ukkonen's algorithm and dynamic cell pruning.
-Copyright (C) 2013 Robert Vaser, Matija Korpar, contributor Mile Šikić
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-Contact the author by robert.vaser@gmail.com.
-Contact the swsharp author by mkorpar@gmail.com.
-*/
-
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "database_hash.h"
 #include "timer.h"
+#include "database_heuristics.h"
 #include "swsharp/evalue.h"
 #include "swsharp/swsharp.h"
 
@@ -58,16 +36,17 @@ static struct option options[] = {
     {"target", required_argument, 0, 'j'},
     {"matrix", required_argument, 0, 'm'},
     {"out", required_argument, 0, 'o'},
-    {"outfmt", required_argument, 0, 't'},
+    {"outfmt", required_argument, 0, 'f'},
     {"evalue", required_argument, 0, 'E'},
     {"max-aligns", required_argument, 0, 'M'},
     {"algorithm", required_argument, 0, 'A'},
     {"nocache", no_argument, 0, 'C'},
     {"cpu", no_argument, 0, 'P'},
+    {"threads", required_argument, 0, 'T'},
     {"seed-length", required_argument, 0, 's'},
+    {"hit-threshold", required_argument, 0, 't'},
     {"max-candidates", required_argument, 0, 'd'},
-    {"progress", no_argument, 0, 'r'},
-    {"permute", required_argument, 0, 'p'},
+    {"dbchunk", required_argument, 0, 'D'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
 };
@@ -121,16 +100,18 @@ int main(int argc, char* argv[]) {
 
     int forceCpu = 0;
 
-    int seedLen = 5;
-    int maxCandidates = 5000;
+    int threads = 8;
 
-    int progress = 0;
-    int permute = 0;
-    int aaScore = 0;
+    int seedLen = 3;
+    int hitThreshold = 13;
+
+    int maxCandidates = 30000;
+
+    float dbchunk = 2;
 
     while (1) {
 
-        char argument = getopt_long(argc, argv, "i:j:g:e:s:p:h", options, NULL);
+        char argument = getopt_long(argc, argv, "i:j:g:e:s:t:T:h", options, NULL);
 
         if (argument == -1) {
             break;
@@ -155,7 +136,7 @@ int main(int argc, char* argv[]) {
         case 'o':
             out = optarg;
             break;
-        case 't':
+        case 'f':
             outFormat = getOutFormat(optarg);
             break;
         case 'M':
@@ -176,20 +157,21 @@ int main(int argc, char* argv[]) {
         case 'P':
             forceCpu = 1;
             break;
+        case 'T':
+            threads = atoi(optarg);
+            break;
         case 's':
             seedLen = atoi(optarg);
+            break;
+        case 't':
+            hitThreshold = atoi(optarg);
             break;
         case 'd':
             maxCandidates = atoi(optarg);
             break;
-        case 'r':
-            progress = 1;
+        case 'D':
+            dbchunk = atof(optarg);
             break;
-        case 'p':
-            permute = 1;
-            aaScore = atoi(optarg);
-            break;
-        case 'h':
         default:
             help();
             return -1;
@@ -201,6 +183,8 @@ int main(int argc, char* argv[]) {
 
     ASSERT(seedLen > 2 && seedLen < 6, "seed length possible values = 3,4,5");
     ASSERT(maxCandidates > 0, "max-candidates possible values = [1, infinity>");
+
+    ASSERT(dbchunk > 0, "invalid dbchunk size");
 
     if (forceCpu) {
         cards = NULL;
@@ -216,23 +200,23 @@ int main(int argc, char* argv[]) {
 
     ASSERT(maxEValue > 0, "invalid evalue");
 
-    Chain** queries = NULL;
-    int queriesLen = 0;
-    readFastaChains(&queries, &queriesLen, queryPath);
+    ASSERT(threads >= 0, "invalid thread number");
+    threadPoolInitialize(threads);
 
-    threadPoolInitialize(cardsLen + 8);
-
-    Scorer* scorer;
+    Scorer* scorer = NULL;
     scorerCreateMatrix(&scorer, matrix, gapOpen, gapExtend);
 
-    void* indices = databaseIndicesCreate(databasePath, queries, queriesLen,
-        seedLen, maxCandidates, progress, permute, scorer, aaScore);
+    void* indices = databaseIndicesCreate(databasePath, queryPath, seedLen, maxCandidates,
+        hitThreshold, scorer, threads);
 
-    /* Timeval swTimer, dbTimer;
-    long long dbTotal = 0, swTotal = 0;
-    timerStart(&swTimer); */
+    Timeval swTimer;
+    timerStart(&swTimer);
 
     if (indices != NULL) {
+
+        Chain** queries = NULL;
+        int queriesLen = 0;
+        readFastaChains(&queries, &queriesLen, queryPath);
 
         if (cache) {
             dumpFastaChains(databasePath);
@@ -247,6 +231,8 @@ int main(int argc, char* argv[]) {
         DbAlignment*** dbAlignments = NULL;
         int* dbAlignmentsLens = NULL;
 
+        int dbReadSize = (int) (dbchunk * 1000000000); // * ~1GB
+
         Chain** database = NULL;
         int databaseLen = 0;
         int databaseStart = 0;
@@ -254,15 +240,14 @@ int main(int argc, char* argv[]) {
         FILE* handle;
         int serialized;
 
-        readFastaChainsPartInit(&database, &databaseLen, &handle,
-            &serialized, databasePath);
+        readFastaChainsPartInit(&database, &databaseLen, &handle, &serialized, databasePath);
 
         int i, j;
 
         while (1) {
 
             int status = readFastaChainsPart(&database, &databaseLen, handle,
-                serialized, 2000000000);
+                serialized, dbReadSize);
 
             DbAlignment*** dbAlignmentsPart =
                 (DbAlignment***) malloc(queriesLen * sizeof(DbAlignment**));
@@ -278,12 +263,8 @@ int main(int argc, char* argv[]) {
 
             for (i = 0; i < queriesLen; ++i) {
 
-                // timerStart(&dbTimer);
-
                 usedIndices = filteredDatabaseCreate(&filteredDatabase,
                     &filteredDatabaseLen, indices, i, database, databaseLen,  1);
-
-                // dbTotal += timerStop(&dbTimer);
 
                 if (filteredDatabaseLen == 0) {
                     dbAlignmentsPart[i] = NULL;
@@ -298,8 +279,6 @@ int main(int argc, char* argv[]) {
                     chainDatabase, scorer, maxAlignments, valueFunction, (void*) eValueParams,
                     maxEValue, NULL, 0, cards, cardsLen, NULL);
 
-                // timerStart(&dbTimer);
-
                 if (usedIndices != NULL) {
                     for (j = 0; j < dbAlignmentsPartLens[i]; ++j) {
 
@@ -311,8 +290,6 @@ int main(int argc, char* argv[]) {
 
                     free(usedIndices);
                 }
-
-                // dbTotal += timerStop(&dbTimer);
 
                 chainDatabaseDelete(chainDatabase);
 
@@ -353,24 +330,20 @@ int main(int argc, char* argv[]) {
 
         deleteFastaChains(database, databaseLen);
 
+        deleteFastaChains(queries, queriesLen);
+
         databaseIndicesDelete(indices);
     }
 
-    /* swTotal = timerStop(&swTimer);
-    timerPrint("hdbPart", dbTotal);
-    timerPrint("swPart", swTotal); */
+    timerPrint("Sw#Part", timerStop(&swTimer));
 
     scorerDelete(scorer);
 
     threadPoolTerminate();
-
-    deleteFastaChains(queries, queriesLen);
-
     free(cards);
 
     return 0;
 }
-
 
 static void getCudaCards(int** cards, int* cardsLen, char* optarg) {
 
@@ -477,18 +450,23 @@ static void help() {
     "        same database, option disables this behaviour\n"
     "    --cpu\n"
     "        only cpu is used\n"
+    "    -T --threads <int>\n"
+    "        default: 8\n"
+    "        number of threads used in thread pool\n"
     "    -s, --seed-length <int>\n"
-    "        default: 5\n"
-    "        length of seeds for hash search,\n"
+    "        default: 3\n"
+    "        length of seeds for hash search\n"
     "        possible values are: 3,4,5\n"
+    "    -t, --hit-threshold <int>\n"
+    "        default: 13\n"
+    "        minimum score for two seeds to trigger a hit\n"
+    "        use -1 to check only exact matching seeds\n"
     "    --max-candidates <int>\n"
-    "        default: 5000\n"
+    "        default: 30000\n"
     "        number of database sequences passed on to the Smith-Waterman part\n"
-    "    -p, --permute <int>\n"
-    "        permuting each seed position if the substitution score is greater\n"
-    "        than input value\n"
-    "    --progress\n"
-    "        prints out the program progression\n"
+    "    --dbchunk <float>\n"
+    "        default: 2\n"
+    "        size of database (in GB) to be read and aligned at a time"
     "    -h, -help\n"
     "        prints out the help\n");
 }

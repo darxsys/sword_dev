@@ -115,19 +115,20 @@ static void* findCandidates(void* params);
 extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seedLen,
     int maxCandidates, int hitThreshold, Scorer* scorer, int threadLen) {
 
-    Data* indices = NULL;
-    dataCreate(&indices, queriesLen);
-
-    if (indicesReadFromFile(indices, queryPath)) {
-        return static_cast<void*>(indices);
-    }
-
     Timeval timer;
     timerStart(&timer);
 
     Chain** queries = NULL;
     int queriesLen = 0;
     readFastaChains(&queries, &queriesLen, queryPath);
+
+    Data* indices = NULL;
+    dataCreate(&indices, queriesLen);
+
+    if (indicesReadFromFile(indices, queryPath)) {
+        timerPrint("HeuristicsTotal", timerStop(&timer));
+        return static_cast<void*>(indices);
+    }
 
     vector<Sequence> qsequences;
     preprocQueries(qsequences, queries, queriesLen);
@@ -219,6 +220,8 @@ extern void* databaseIndicesCreate(char* databasePath, char* queryPath, int seed
     candidatesDelete(candidates);
 
     seedsDelete(seeds);
+
+    indicesDumpToFile(indices, queryPath);
 
     timerPrint("HeuristicsTotal", timerStop(&timer));
 

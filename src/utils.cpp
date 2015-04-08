@@ -22,6 +22,7 @@ using namespace std;
 #define SEED_IDX_LEN(n) ((n) == 3 ? 26426 : ((n) == 4 ? 845626 : 27060026))
 
 #define AA 20
+#define BUFFER 1024
 
 static const char AMINO_ACIDS[] = {
     'A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K',
@@ -247,7 +248,7 @@ extern int indicesReadFromFile(Data* indices, char* path) {
 
         int error = fread(&size, sizeof(size), 1, dumpFile);
         ASSERT(error == 1, "reading from dump file failed");
-        ASSERT(sizr >= 0, "invalid size %d", size);
+        ASSERT(size >= 0, "invalid size %d", size);
 
         (*indices)[i].resize(size);
         error = fread(&((*indices)[i][0]), sizeof(int), size, dumpFile);
@@ -256,6 +257,8 @@ extern int indicesReadFromFile(Data* indices, char* path) {
 
     fclose(dumpFile);
     delete[] filePath;
+
+    return 1;
 }
 
 // ***************************************************************************

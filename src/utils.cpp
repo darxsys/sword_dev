@@ -241,6 +241,8 @@ extern int indicesReadFromFile(Data* indices, char* path) {
     snprintf(filePath, BUFFER, "%s.indices", path);
 
     FILE* dumpFile = fopen(filePath, "rb");
+    delete[] filePath;
+    
     if (dumpFile == NULL) return 0;
 
     for (int i = 0; i < (int) indices->size(); ++i) {
@@ -256,7 +258,6 @@ extern int indicesReadFromFile(Data* indices, char* path) {
     }
 
     fclose(dumpFile);
-    delete[] filePath;
 
     return 1;
 }
